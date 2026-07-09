@@ -82,6 +82,11 @@ func (s *Server) Start() error {
 	// Pet state
 	mux.HandleFunc("/api/pet-state", cors(s.handlePetState))
 
+	// Backend pool (cc-switch replacement)
+	mux.HandleFunc("/api/backends", cors(s.handleBackends))
+	mux.HandleFunc("/api/backends/import", cors(s.handleBackends))
+	mux.HandleFunc("/api/backends/export", cors(s.handleBackends))
+
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)
 

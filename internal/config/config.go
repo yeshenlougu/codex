@@ -38,17 +38,29 @@ type AgentConfig struct {
 
 // ProviderConfig holds provider-specific settings.
 type ProviderConfig struct {
-	BaseURL      string      `yaml:"base_url"`
-	APIKey       string      `yaml:"api_key"`
-	WireAPI      string      `yaml:"wire_api"`
-	PoolStrategy string      `yaml:"pool_strategy"` // "fill_first" or "round_robin"
-	ExtraKeys    []KeyConfig `yaml:"extra_keys"`
+	BaseURL      string          `yaml:"base_url"`
+	APIKey       string          `yaml:"api_key"`
+	WireAPI      string          `yaml:"wire_api"`
+	PoolStrategy string          `yaml:"pool_strategy"` // "fill_first", "round_robin", "random"
+	ExtraKeys    []KeyConfig     `yaml:"extra_keys"`    // legacy: additional keys sharing base_url
+	Backends     []BackendConfig `yaml:"backends"`      // multi-endpoint pool (each with own key + base_url)
 }
 
-// KeyConfig is an additional API key entry.
+// KeyConfig is an additional API key entry (legacy).
 type KeyConfig struct {
 	Key   string `yaml:"key"`
 	Label string `yaml:"label"`
+}
+
+// BackendConfig is a fully independent API endpoint entry.
+// When configured, Codex acts as its own cc-switch: routing requests
+// across multiple backends with automatic failover and health checks.
+type BackendConfig struct {
+	Key      string `yaml:"key"`      // API key for this backend
+	Label    string `yaml:"label"`    // human-readable name
+	BaseURL  string `yaml:"base_url"` // full API base URL (e.g. https://api.openai.com/v1)
+	Provider string `yaml:"provider"` // "openai", "anthropic", "ollama"
+	Weight   int    `yaml:"weight"`   // routing weight (default 1, 0 = disabled)
 }
 
 // DefaultConfig returns a sensible default configuration.

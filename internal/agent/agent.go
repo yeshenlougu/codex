@@ -15,9 +15,8 @@ import (
 // Agent is the core coding agent.
 type Agent struct {
 	cfg      *config.Config
-	client   *provider.Client
 	registry *tool.Registry
-	pool     *provider.KeyPool
+	pool     *provider.Pool // multi-endpoint pool (replaces external cc-switch)
 	store    *session.Store
 	skills   *skill.Registry
 
@@ -28,7 +27,7 @@ type Agent struct {
 	running   bool
 }
 
-// New creates an Agent with all enabled tools.
+// New creates an Agent with all enabled tools and the backend pool.
 func New(cfg *config.Config) *Agent {
 	registry := tool.NewRegistry()
 	registry.Register(tool.NewShellTool())
@@ -40,14 +39,11 @@ func New(cfg *config.Config) *Agent {
 	registry.Register(tool.NewGitTool())
 	registry.Register(tool.NewWebFetchTool())
 
-	// Build key pool if multiple keys configured
-	pool := provider.NewKeyPool(cfg.Provider.PoolStrategy)
-	if cfg.Provider.APIKey != "" {
-		pool.Add(cfg.Provider.APIKey, "default", cfg.Provider.BaseURL)
-	}
-	for _, kc := range cfg.Provider.ExtraKeys {
-		pool.Add(kc.Key, kc.Label, cfg.Provider.BaseURL)
-	}
+	// Build backend pool (cc-switch replacement)
+	pool := buildPool(cfg)
+
+	// Start periodic health checks on unhealthy backends
+	pool.StartHealthCheck()
 
 	return &Agent{
 		cfg:      cfg,
@@ -59,6 +55,44 @@ func New(cfg *config.Config) *Agent {
 	}
 }
 
+// buildPool creates a Pool from config, preferring backends over legacy keys.
+func buildPool(cfg *config.Config) *provider.Pool {
+	strategy := cfg.Provider.PoolStrategy
+	if strategy == "" {
+		strategy = "round_robin"
+	}
+	pool := provider.NewPool(strategy)
+
+	// New-style: multi-endpoint backends
+	if len(cfg.Provider.Backends) > 0 {
+		for _, be := range cfg.Provider.Backends {
+			baseURL := be.BaseURL
+			if baseURL == "" {
+				baseURL = cfg.Provider.BaseURL
+			}
+			providerType := be.Provider
+			if providerType == "" {
+				providerType = cfg.Model.Provider
+			}
+			pool.Add(be.Key, be.Label, baseURL, providerType, be.Weight)
+		}
+		return pool
+	}
+
+	// Legacy: single base_url + api_key + extra_keys
+	baseURL := cfg.Provider.BaseURL
+	providerType := cfg.Model.Provider
+
+	if cfg.Provider.APIKey != "" {
+		pool.Add(cfg.Provider.APIKey, "default", baseURL, providerType, 1)
+	}
+	for _, kc := range cfg.Provider.ExtraKeys {
+		pool.Add(kc.Key, kc.Label, baseURL, providerType, 1)
+	}
+
+	return pool
+}
+
 // WithStore attaches a session store for auto-save.
 func (a *Agent) WithStore(store *session.Store) *Agent {
 	a.store = store
@@ -68,7 +102,6 @@ func (a *Agent) WithStore(store *session.Store) *Agent {
 // WithSkills attaches a skill registry and injects skills into system prompt.
 func (a *Agent) WithSkills(skills *skill.Registry) *Agent {
 	a.skills = skills
-	// Inject skills into system prompt
 	if len(a.messages) > 0 && a.messages[0].Role == "system" {
 		a.messages[0].Content += skills.SystemPrompt()
 	}
@@ -97,17 +130,15 @@ func (a *Agent) SetSessionID(id string) {
 // SessionID returns the current session ID.
 func (a *Agent) SessionID() string { return a.sessionID }
 
-func (a *Agent) resolveClient() *provider.Client {
-	if a.client != nil {
-		return a.client
-	}
+// resolveClient selects a backend and creates a fresh Client for this request.
+// Returns the client and the selected entry (for marking success/failure).
+func (a *Agent) resolveClient() (*provider.Client, *provider.PoolEntry) {
 	entry, ok := a.pool.Select()
 	if !ok {
-		a.client = provider.NewClient(a.cfg.Provider.BaseURL, a.cfg.Provider.APIKey, a.cfg.Model.Model)
-	} else {
-		a.client = provider.NewClient(a.cfg.Provider.BaseURL, entry.Key, a.cfg.Model.Model)
+		// Fallback: bare client with global config
+		return provider.NewClient(a.cfg.Provider.BaseURL, a.cfg.Provider.APIKey, a.cfg.Model.Model), nil
 	}
-	return a.client
+	return provider.NewClientFromEntry(entry, a.cfg.Model.Model), entry
 }
 
 // AddMessage appends a message.
@@ -124,15 +155,13 @@ func (a *Agent) AddToolResult(toolCallID, content string) {
 	})
 }
 
-// Run executes the think→act→observe loop.
+// Run executes the think→act→observe loop with automatic backend failover.
 func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, error) {
-	// Check if user invoked a skill
 	msg := userMessage
 	if a.skills != nil && strings.HasPrefix(strings.TrimSpace(userMessage), "/") {
 		skillName := strings.TrimSpace(userMessage[1:])
 		if s, ok := a.skills.Get(skillName); ok {
-			// Inject skill content as context
-			msg = fmt.Sprintf("Use the following skill instructions:\\n\\n%s\\n\\n---\\n\\nNow help me with this skill.", s.Content)
+			msg = fmt.Sprintf("Use the following skill instructions:\n\n%s\n\n---\n\nNow help me with this skill.", s.Content)
 		}
 	}
 
@@ -159,13 +188,70 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 			}
 		}
 
+		// Try each available backend (max 3 retries)
+		result, err := a.tryChatWithRetry(providerToolDefs, onChunk)
+		if err != nil {
+			return "", err
+		}
+
+		if result.assistantMsg != "" {
+			a.messages = append(a.messages, provider.Message{Role: "assistant", Content: result.assistantMsg})
+			return result.assistantMsg, nil
+		}
+
+		// Tool calls: add assistant message + execute tools
+		a.messages = append(a.messages, provider.Message{
+			Role:      "assistant",
+			Content:   result.content,
+			ToolCalls: result.toolCalls,
+		})
+
+		for _, tc := range result.toolCalls {
+			execResult, execErr := a.registry.Execute(tc.Function.Name, tc.Function.Arguments)
+			if execErr != nil {
+				return "", fmt.Errorf("tool execution failed (%s): %w", tc.Function.Name, execErr)
+			}
+			resultText := execResult.Output
+			if !execResult.Success {
+				resultText = fmt.Sprintf("Error: %s\nOutput: %s", execResult.Error, execResult.Output)
+			}
+			a.AddToolResult(tc.ID, resultText)
+		}
+	}
+
+	if a.turnCount >= a.cfg.Agent.MaxTurns {
+		return "", fmt.Errorf("max turns (%d) reached", a.cfg.Agent.MaxTurns)
+	}
+	return "", fmt.Errorf("agent stopped unexpectedly")
+}
+
+// chatResult holds the outcome of one ChatStream call.
+type chatResult struct {
+	assistantMsg string
+	content      string
+	toolCalls    []provider.ToolCall
+}
+
+// tryChatWithRetry attempts a chat call with up to 3 backend switches.
+func (a *Agent) tryChatWithRetry(toolDefs []provider.ToolDef, onChunk func(string)) (*chatResult, error) {
+	maxRetries := 3
+	if a.pool.Len() < maxRetries {
+		maxRetries = a.pool.Len()
+	}
+	if maxRetries < 1 {
+		maxRetries = 1
+	}
+
+	var lastErr error
+	attempts := 0
+	for attempts < maxRetries {
+		attempts++
+		client, entry := a.resolveClient()
+
 		var fullContent strings.Builder
 		var toolCalls []provider.ToolCall
 
-		client := a.resolveClient()
-		usedKey := client.APIKey
-
-		err := client.ChatStream(a.messages, providerToolDefs, a.cfg.Model.ReasoningEffort,
+		err := client.ChatStream(a.messages, toolDefs, a.cfg.Model.ReasoningEffort,
 			func(delta string) {
 				fullContent.WriteString(delta)
 				if onChunk != nil {
@@ -177,46 +263,46 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 			},
 		)
 
-		if err != nil {
-			if a.pool.Len() > 1 {
-				a.pool.MarkFailure(usedKey)
+		if err == nil {
+			if entry != nil {
+				entry.MarkSuccess()
 			}
-			return "", fmt.Errorf("API call failed (turn %d): %w", a.turnCount, err)
-		}
-		a.pool.MarkSuccess(usedKey)
-
-		if len(toolCalls) == 0 {
-			assistantMsg := fullContent.String()
-			if assistantMsg != "" {
-				a.messages = append(a.messages, provider.Message{Role: "assistant", Content: assistantMsg})
+			content := fullContent.String()
+			if len(toolCalls) == 0 {
+				return &chatResult{assistantMsg: content}, nil
 			}
-			return assistantMsg, nil
+			return &chatResult{content: content, toolCalls: toolCalls}, nil
 		}
 
-		content := fullContent.String()
-		a.messages = append(a.messages, provider.Message{
-			Role:      "assistant",
-			Content:   content,
-			ToolCalls: toolCalls,
-		})
+		lastErr = err
+		isRetryable := isRetryableError(err)
+		if entry != nil {
+			entry.MarkFailure(isRetryable)
+		}
 
-		for _, tc := range toolCalls {
-			result, execErr := a.registry.Execute(tc.Function.Name, tc.Function.Arguments)
-			if execErr != nil {
-				return "", fmt.Errorf("tool execution failed (%s): %w", tc.Function.Name, execErr)
-			}
-			resultText := result.Output
-			if !result.Success {
-				resultText = fmt.Sprintf("Error: %s\nOutput: %s", result.Error, result.Output)
-			}
-			a.AddToolResult(tc.ID, resultText)
+		if !isRetryable {
+			break
 		}
 	}
 
-	if a.turnCount >= a.cfg.Agent.MaxTurns {
-		return "", fmt.Errorf("max turns (%d) reached", a.cfg.Agent.MaxTurns)
+	return nil, fmt.Errorf("all backends failed (tried %d/%d): %w", attempts, maxRetries, lastErr)
+}
+
+// isRetryableError determines if an error might succeed on another backend.
+func isRetryableError(err error) bool {
+	if err == nil {
+		return false
 	}
-	return "", fmt.Errorf("agent stopped unexpectedly")
+	msg := err.Error()
+	// Rate limiting, server errors, timeouts — retry on another backend
+	retryable := []string{"429", "500", "502", "503", "504", "timeout", "connection refused", "EOF", "reset by peer"}
+	for _, s := range retryable {
+		if strings.Contains(msg, s) {
+			return true
+		}
+	}
+	// Auth errors, bad requests — not retryable
+	return false
 }
 
 func (a *Agent) maybeSave() {
@@ -238,17 +324,14 @@ func (a *Agent) maybeSave() {
 func (a *Agent) Stop() { a.running = false }
 
 // CompressContext reduces message history when token count is high.
-// It keeps the system prompt + last N user/assistant pairs.
 func (a *Agent) CompressContext(keepPairs int) {
 	if len(a.messages) <= 2+keepPairs*2 {
 		return
 	}
-	// Preserve system message
 	var compressed []provider.Message
 	if len(a.messages) > 0 && a.messages[0].Role == "system" {
 		compressed = append(compressed, a.messages[0])
 	}
-	// Keep last N user+assistant pairs
 	start := len(a.messages) - keepPairs*2
 	if start < 1 {
 		start = 1
@@ -268,6 +351,9 @@ func (a *Agent) TurnCount() int { return a.turnCount }
 
 // IsThinking returns true while the agent is running a turn.
 func (a *Agent) IsThinking() bool { return a.running }
+
+// Pool returns the backend pool (for status reporting).
+func (a *Agent) Pool() *provider.Pool { return a.pool }
 
 // NewSessionID generates a timestamp-based session ID.
 func NewSessionID() string {

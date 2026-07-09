@@ -99,6 +99,11 @@ func NewClient(baseURL, apiKey, model string) *Client {
 	}
 }
 
+// NewClientFromEntry creates a Client from a PoolEntry.
+func NewClientFromEntry(entry *PoolEntry, model string) *Client {
+	return NewClient(entry.BaseURL, entry.Key, model)
+}
+
 // Chat sends a chat completion request (non-streaming).
 func (c *Client) Chat(messages []Message, tools []ToolDef) (*ChatResponse, error) {
 	req := ChatRequest{

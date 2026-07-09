@@ -12,8 +12,11 @@ import (
 	"syscall"
 	"time"
 
+	"gopkg.in/yaml.v3"
+
 	"github.com/yeshenlougu/codex/internal/agent"
 	"github.com/yeshenlougu/codex/internal/api"
+	"github.com/yeshenlougu/codex/internal/ccswitch"
 	"github.com/yeshenlougu/codex/internal/config"
 	"github.com/yeshenlougu/codex/internal/session"
 	"github.com/yeshenlougu/codex/internal/skill"
@@ -63,8 +66,14 @@ func main() {
 
 	applyOverrides(cfg)
 
-	if cfg.Provider.APIKey == "" {
-		fmt.Fprintln(os.Stderr, "Error: No API key. Set OPENAI_API_KEY or use --api-key")
+	// Subcommand: provider import/export (cc-switch migration)
+	if flag.NArg() >= 2 && flag.Arg(0) == "provider" {
+		handleProviderCmd(cfg, flag.Arg(1), flag.Args()[2:])
+		return
+	}
+
+	if cfg.Provider.APIKey == "" && len(cfg.Provider.Backends) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: No API key configured. Set OPENAI_API_KEY, use --api-key, or configure backends in config.yaml")
 		os.Exit(1)
 	}
 
@@ -236,6 +245,91 @@ func listSessionsCmd(store *session.Store) {
 		fmt.Printf("  %s  %s/%s  %d msgs  %s  %s\n",
 			s.ID, s.Provider, s.Model, s.MsgCount, ago, s.Title)
 	}
+}
+
+func handleProviderCmd(cfg *config.Config, action string, args []string) {
+	switch action {
+	case "import":
+		if len(args) < 1 {
+			fmt.Fprintln(os.Stderr, "Usage: codex-go provider import <cc-switch-config.yaml|json>")
+			os.Exit(1)
+		}
+		path := args[0]
+		backends, strategy, err := ccswitch.ImportFile(path)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Import failed: %v\n", err)
+			os.Exit(1)
+		}
+		ccswitch.MergeIntoConfig(cfg, backends, strategy)
+
+		// Save merged config
+		configPath := configFilePath()
+		if err := saveConfig(cfg, configPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Save config failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Imported %d backends from %s\n", len(backends), path)
+		fmt.Printf("Strategy: %s\n", strategy)
+		fmt.Printf("Config saved: %s\n", configPath)
+		for _, be := range backends {
+			keyPreview := be.Key
+			if len(keyPreview) > 12 {
+				keyPreview = keyPreview[:12] + "..."
+			}
+			fmt.Printf("  - %s (%s, weight=%d)\n", be.Label, keyPreview, be.Weight)
+		}
+
+	case "export":
+		outPath := "cc-switch.yaml"
+		if len(args) > 0 {
+			outPath = args[0]
+		}
+		backends := cfg.Provider.Backends
+		if len(backends) == 0 && cfg.Provider.APIKey != "" {
+			backends = append(backends, config.BackendConfig{
+				Label: "default", Key: cfg.Provider.APIKey,
+				BaseURL: cfg.Provider.BaseURL, Weight: 1,
+			})
+		}
+		if err := ccswitch.ExportToCCSwitch(backends, cfg.Provider.PoolStrategy, outPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Export failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Exported %d backends to %s\n", len(backends), outPath)
+
+	case "status":
+		fmt.Printf("Pool strategy: %s\n", cfg.Provider.PoolStrategy)
+		fmt.Printf("Backends: %d configured\n", len(cfg.Provider.Backends))
+		for _, be := range cfg.Provider.Backends {
+			keyPreview := be.Key
+			if len(keyPreview) > 12 {
+				keyPreview = keyPreview[:12] + "..."
+			}
+			fmt.Printf("  - %s → %s (weight=%d, key=%s)\n", be.Label, be.BaseURL, be.Weight, keyPreview)
+		}
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown provider subcommand: %s\n", action)
+		fmt.Fprintln(os.Stderr, "Usage: codex-go provider <import|export|status> [args...]")
+		os.Exit(1)
+	}
+}
+
+func configFilePath() string {
+	if *configPath != "" {
+		return *configPath
+	}
+	home, _ := os.UserHomeDir()
+	return filepath.Join(home, ".codex", "config.yaml")
+}
+
+func saveConfig(cfg *config.Config, path string) error {
+	os.MkdirAll(filepath.Dir(path), 0755)
+	data, err := yaml.Marshal(cfg)
+	if err != nil {
+		return err
+	}
+	return os.WriteFile(path, data, 0644)
 }
 
 func configDir() string {
