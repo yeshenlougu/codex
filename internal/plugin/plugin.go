@@ -17,12 +17,12 @@ import (
 
 // PluginDef is loaded from a .plugin.json file.
 type PluginDef struct {
-	Name        string           `json:"name"`
-	Description string           `json:"description"`
-	Command     string           `json:"command"`
-	Args        []string         `json:"args"`
-	Timeout     int              `json:"timeout"`
-	Schema      map[string]any   `json:"schema"`
+	Name        string            `json:"name"`
+	Description string            `json:"description"`
+	Command     string            `json:"command"`
+	Args        []string          `json:"args"`
+	Timeout     int               `json:"timeout"`
+	Schema      map[string]any    `json:"schema"`
 	Env         map[string]string `json:"env,omitempty"`
 }
 

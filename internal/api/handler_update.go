@@ -25,12 +25,12 @@ func (s *Server) handleUpdate(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"current":  currentVer,
-		"latest":   latest.TagName,
-		"name":     latest.Name,
+		"current":    currentVer,
+		"latest":     latest.TagName,
+		"name":       latest.Name,
 		"has_update": hasUpdate,
-		"url":      latest.HTMLURL,
-		"body":     latest.Body,
-		"published": latest.PublishedAt.Format("2006-01-02"),
+		"url":        latest.HTMLURL,
+		"body":       latest.Body,
+		"published":  latest.PublishedAt.Format("2006-01-02"),
 	})
 }
