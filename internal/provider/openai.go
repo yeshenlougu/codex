@@ -18,8 +18,8 @@ type Message struct {
 
 // ToolDef defines a tool that the model can call.
 type ToolDef struct {
-	Type     string       `json:"type"`
-	Function FunctionDef  `json:"function"`
+	Type     string      `json:"type"`
+	Function FunctionDef `json:"function"`
 }
 
 // FunctionDef defines a function tool's schema.
@@ -41,10 +41,10 @@ type ToolCall struct {
 
 // ChatRequest is the request body for chat completions.
 type ChatRequest struct {
-	Model    string     `json:"model"`
-	Messages []Message  `json:"messages"`
-	Tools    []ToolDef  `json:"tools,omitempty"`
-	Stream   bool       `json:"stream"`
+	Model    string    `json:"model"`
+	Messages []Message `json:"messages"`
+	Tools    []ToolDef `json:"tools,omitempty"`
+	Stream   bool      `json:"stream"`
 }
 
 // ChatResponse is the non-streaming response.
@@ -63,8 +63,8 @@ type ChatResponse struct {
 type StreamDelta struct {
 	Choices []struct {
 		Delta struct {
-			Role    string `json:"role"`
-			Content string `json:"content"`
+			Role      string `json:"role"`
+			Content   string `json:"content"`
 			ToolCalls []struct {
 				Index    int    `json:"index"`
 				ID       string `json:"id"`

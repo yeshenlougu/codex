@@ -32,7 +32,7 @@ type ToolsConfig struct {
 
 // AgentConfig controls agent behavior.
 type AgentConfig struct {
-	MaxTurns int    `yaml:"max_turns"`
+	MaxTurns     int    `yaml:"max_turns"`
 	SystemPrompt string `yaml:"system_prompt"`
 }
 
@@ -80,30 +80,29 @@ func Load(path string) (*Config, error) {
 
 	if path == "" {
 		home, err := os.UserHomeDir()
+		if err == nil {
+			path = filepath.Join(home, ".codex", "config.yaml")
+		}
+	}
+
+	if path != "" {
+		data, err := os.ReadFile(path)
 		if err != nil {
-			return cfg, nil
+			if !os.IsNotExist(err) {
+				return nil, fmt.Errorf("read config: %w", err)
+			}
+			// File doesn't exist — continue with defaults + env
+		} else {
+			if err := yaml.Unmarshal(data, cfg); err != nil {
+				return nil, fmt.Errorf("parse config: %w", err)
+			}
 		}
-		path = filepath.Join(home, ".codex", "config.yaml")
 	}
 
-	data, err := os.ReadFile(path)
-	if err != nil {
-		if os.IsNotExist(err) {
-			return cfg, nil // use defaults
-		}
-		return nil, fmt.Errorf("read config: %w", err)
-	}
-
-	if err := yaml.Unmarshal(data, cfg); err != nil {
-		return nil, fmt.Errorf("parse config: %w", err)
-	}
-
-	// Resolve API key from environment if not in config
+	// Always resolve API key and base URL from environment as fallback
 	if cfg.Provider.APIKey == "" {
 		cfg.Provider.APIKey = resolveAPIKey(cfg.Model.Provider)
 	}
-
-	// Resolve base URL if not in config
 	if cfg.Provider.BaseURL == "" {
 		cfg.Provider.BaseURL = resolveBaseURL(cfg.Model.Provider)
 	}
