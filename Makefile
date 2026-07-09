@@ -59,17 +59,34 @@ build-all:
 # Desktop Mode: electron-builder bundles Go backend + React UI + Electron shell
 # =============================================================================
 
-desktop: build-all
-	@echo "🔨 Packaging desktop app..."
+desktop: web build-all
+	@echo "🔨 Packaging desktop app for Windows..."
 	@mkdir -p $(DESKTOP_DIR)
-	@cp $(CLI_DIR)/$(APP_NAME)-linux-amd64 $(DESKTOP_DIR)/$(APP_NAME) 2>/dev/null || true
-	@cp $(CLI_DIR)/$(APP_NAME)-darwin-amd64 $(DESKTOP_DIR)/$(APP_NAME) 2>/dev/null || true
-	@# Copy web dist
-	@cp -r $(WEB_DIST) $(DESKTOP_DIR)/web-dist
-	@# Copy Electron app
-	@cp -r $(DESKTOP_SRC) $(DESKTOP_DIR)/electron
-	@echo "✅ Desktop package prepared: $(DESKTOP_DIR)/"
-	@echo "   To build installer, run: cd $(DESKTOP_DIR)/electron && npm run build"
+	@# Copy Windows CLI to desktop/ (Go binary now embeds the frontend)
+	@cp $(CLI_DIR)/$(APP_NAME)-windows-amd64.exe $(DESKTOP_SRC)/codex-go.exe
+	@# Install Electron deps
+	@cd $(DESKTOP_SRC) && [ -d node_modules ] || npm install --silent 2>/dev/null
+	@# Build Windows portable with electron-builder (rcedit/wine warnings are safe to ignore)
+	@cd $(DESKTOP_SRC) && npx electron-builder --win portable 2>&1 | tail -3 || true
+	@# Copy output to dist/desktop/
+	@rm -rf $(DESKTOP_DIR)/release
+	@cp -r $(DESKTOP_SRC)/release $(DESKTOP_DIR)/release
+	@# Rename win-unpacked to "Codex Go" for portable packaging
+	@[ -d "$(DESKTOP_DIR)/release/win-unpacked" ] && mv $(DESKTOP_DIR)/release/win-unpacked "$(DESKTOP_DIR)/release/Codex Go" || true
+	@# 🔧 electron-builder may skip extraResources on rcedit failure — copy backend binary manually
+	@mkdir -p "$(DESKTOP_DIR)/release/Codex Go/resources/backend"
+	@cp $(CLI_DIR)/$(APP_NAME)-windows-amd64.exe "$(DESKTOP_DIR)/release/Codex Go/resources/backend/codex-go.exe"
+	@# Build portable tar.gz
+	@cd $(DESKTOP_DIR)/release && tar -czf ../codex-go-windows-portable.tar.gz "Codex Go" 2>/dev/null || true
+	@# Build NSIS installer
+	@echo "🔧 Building NSIS installer..."
+	@cp $(CLI_DIR)/installer.nsi $(DESKTOP_DIR)/installer.nsi 2>/dev/null || true
+	@makensis $(DESKTOP_DIR)/installer.nsi 2>&1 | tail -3
+	@# Cleanup intermediates
+	@rm -rf $(DESKTOP_SRC)/codex-go.exe $(DESKTOP_SRC)/release
+	@echo ""
+	@echo "✅ Desktop packages:"
+	@ls -lh $(DESKTOP_DIR)/codex-go-windows-portable.tar.gz $(DESKTOP_DIR)/Codex-Go-Setup-*.exe 2>/dev/null
 
 # =============================================================================
 # Web Frontend
@@ -80,6 +97,10 @@ web:
 	@cd $(WEB_DIR) && npm install --silent 2>/dev/null
 	@cd $(WEB_DIR) && npx vite build --logLevel warn
 	@echo "✅ Frontend built: $(WEB_DIST)/"
+	@# Copy to embed location for Go binary
+	@rm -rf internal/api/web-dist
+	@cp -r $(WEB_DIST) internal/api/web-dist
+	@echo "✅ Embedded at: internal/api/web-dist/"
 
 # =============================================================================
 # Release: build everything + create archives
@@ -103,6 +124,7 @@ release: clean build-all web
 clean:
 	@echo "🧹 Cleaning..."
 	@rm -rf $(DIST_DIR)
+	@rm -rf internal/api/web-dist
 	@rm -f $(APP_NAME)
 	@cd $(WEB_DIR) && rm -rf dist node_modules 2>/dev/null || true
 	@cd $(DESKTOP_SRC) && rm -rf node_modules 2>/dev/null || true

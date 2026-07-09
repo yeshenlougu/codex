@@ -96,3 +96,18 @@ export function getBackendsExportUrl(): string { return BASE + '/backends/export
 export async function getPetState(): Promise<{ status: string; agents: number; thinking: number }> {
   return req('/pet-state');
 }
+
+// Files
+export async function listFiles(dirPath?: string): Promise<{ path: string; files: FileEntry[] }> {
+  const q = dirPath ? `?path=${encodeURIComponent(dirPath)}` : '';
+  return req(`/files${q}`);
+}
+export async function readFileContent(filePath: string): Promise<{ path: string; size: number; binary: boolean; content: string; lines?: number }> {
+  return req(`/files/content?path=${encodeURIComponent(filePath)}`);
+}
+export async function diffFiles(a: string, b: string): Promise<{ file_a: string; file_b: string; diff: DiffLine[] }> {
+  return req(`/files/diff?a=${encodeURIComponent(a)}&b=${encodeURIComponent(b)}`);
+}
+
+interface FileEntry { name: string; path: string; is_dir: boolean; size: number; mod_time: string }
+interface DiffLine { type: 'same' | 'add' | 'remove'; content: string; line_a?: number; line_b?: number }

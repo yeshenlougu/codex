@@ -18,6 +18,7 @@ import (
 	"github.com/yeshenlougu/codex/internal/api"
 	"github.com/yeshenlougu/codex/internal/ccswitch"
 	"github.com/yeshenlougu/codex/internal/config"
+	"github.com/yeshenlougu/codex/internal/logger"
 	"github.com/yeshenlougu/codex/internal/session"
 	"github.com/yeshenlougu/codex/internal/skill"
 )
@@ -49,6 +50,22 @@ var (
 func main() {
 	flag.Parse()
 
+	// Init persistent logging
+	logsDir := filepath.Join(configDir(), "logs")
+	if err := logger.Init(logsDir); err != nil {
+		fmt.Fprintf(os.Stderr, "logger init: %v\n", err)
+	}
+	defer logger.Close()
+
+	// Rotate log daily + clean old logs
+	go func() {
+		for {
+			time.Sleep(1 * time.Minute)
+			logger.RotateIfNeeded()
+		}
+	}()
+	logger.CleanOld(30) // keep 30 days
+
 	// --version
 	if *showVersion {
 		fmt.Printf("Codex Go %s\n", version)
@@ -70,11 +87,6 @@ func main() {
 	if flag.NArg() >= 2 && flag.Arg(0) == "provider" {
 		handleProviderCmd(cfg, flag.Arg(1), flag.Args()[2:])
 		return
-	}
-
-	if cfg.Provider.APIKey == "" && len(cfg.Provider.Backends) == 0 {
-		fmt.Fprintln(os.Stderr, "Error: No API key configured. Set OPENAI_API_KEY, use --api-key, or configure backends in config.yaml")
-		os.Exit(1)
 	}
 
 	// Session store
@@ -104,10 +116,16 @@ func main() {
 		return
 	}
 
-	// --serve
+	// --serve (skip API key check — configurable via web UI)
 	if *serve {
 		serveCmd(cfg, store, skillsRegistry)
 		return
+	}
+
+	// CLI mode: require API key
+	if cfg.Provider.APIKey == "" && len(cfg.Provider.Backends) == 0 {
+		fmt.Fprintln(os.Stderr, "Error: No API key configured. Set OPENAI_API_KEY, use --api-key, or configure backends in config.yaml")
+		os.Exit(1)
 	}
 
 	// Create agent

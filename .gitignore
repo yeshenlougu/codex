@@ -32,3 +32,4 @@ desktop/release/
 
 # Build output
 dist/
+internal/api/web-dist

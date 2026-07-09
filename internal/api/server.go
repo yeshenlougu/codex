@@ -89,8 +89,8 @@ func (s *Server) Start() error {
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
-	// Static files (frontend)
-	mux.Handle("/", http.FileServer(http.Dir("web/dist")))
+	// Static files (frontend — embedded in binary)
+	mux.Handle("/", http.FileServer(WebFS()))
 
 	s.httpSrv = &http.Server{
 		Addr:         s.addr,

@@ -1,59 +1,58 @@
 import { useState, useCallback } from 'react';
-import AppShell from './components/Layout/AppShell';
-import ChatPanel from './components/Chat/ChatPanel';
-import SettingsPanel from './components/Settings/SettingsPanel';
-import PetStatus from './components/Pet/PetStatus';
-import TerminalPanel from './components/Terminal/TerminalPanel';
-import FileViewer from './components/Files/FileViewer';
+import TitleBar from './components/TitleBar';
+import LeftSidebar from './components/LeftSidebar';
+import ChatPage from './pages/ChatPage';
+import SettingsPage from './pages/SettingsPage';
+import RightPanel from './components/RightPanel';
 
-type Panel = 'chat' | 'settings' | 'pet' | 'terminal' | 'files';
+export type Page = 'chat' | 'settings';
+export type RightTab = 'files' | 'changes' | 'git';
 
 export default function App() {
-  const [panel, setPanel] = useState<Panel>('chat');
+  const [page, setPage] = useState<Page>('chat');
+  const [rightTab, setRightTab] = useState<RightTab>('files');
   const [sessionId, setSessionId] = useState(() => {
-    const n = new Date(); const p = (n:number)=>String(n).padStart(2,'0');
-    return `${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
+    const n = new Date(); const p = (x: number) => String(x).padStart(2, '0');
+    return `${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
   });
+  const [workspace, setWorkspace] = useState('default');
 
-  const newSesh = useCallback(() => {
-    const n = new Date(); const p = (n:number)=>String(n).padStart(2,'0');
-    setSessionId(`${n.getFullYear()}${p(n.getMonth()+1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`);
-    setPanel('chat');
+  const newSession = useCallback(() => {
+    const n = new Date(); const p = (x: number) => String(x).padStart(2, '0');
+    setSessionId(`${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`);
+    setPage('chat');
   }, []);
 
-  const resume = useCallback((id: string) => { setSessionId(id); setPanel('chat'); }, []);
-
-  const tabs: Panel[] = ['chat', 'terminal', 'files', 'settings', 'pet'];
-  const labels: Record<Panel,string> = { chat: '💬 Chat', terminal: '⚡ Term', files: '📁 Files', settings: '⚙️ Config', pet: '🐱 Pet' };
+  const resumeSession = useCallback((id: string) => { setSessionId(id); setPage('chat'); }, []);
 
   return (
-    <div className="h-screen flex flex-col bg-[#0d1117]">
-      <header className="h-10 flex items-center px-4 border-b border-[#30363d] bg-[#161b22] shrink-0">
-        <span className="text-[#58a6ff] font-bold text-sm">🐱 Codex Go</span>
-        <span className="text-[#8b949e] text-xs ml-3">Session: {sessionId.slice(-8)}</span>
-        <nav className="flex gap-1 ml-auto">
-          {tabs.map(t => (
-            <button key={t} onClick={() => setPanel(t)}
-              className={`px-3 py-1 text-xs rounded ${panel===t ? 'bg-[#58a6ff]/20 text-[#58a6ff]' : 'text-[#8b949e] hover:bg-[#21262d]'}`}>
-              {labels[t]}
-            </button>
-          ))}
-        </nav>
-        <button onClick={newSesh} className="ml-3 px-2 py-1 text-xs bg-[#238636] hover:bg-[#2ea043] text-white rounded">+ New</button>
-      </header>
-      <main className="flex-1 overflow-hidden">
-        <AppShell sessionId={sessionId} onResumeSession={resume} onNewSession={newSesh}>
-          {panel === 'chat' && <ChatPanel sessionId={sessionId} />}
-          {panel === 'terminal' && <TerminalPanel />}
-          {panel === 'files' && <FileViewer />}
-          {panel === 'settings' && <SettingsPanel />}
-          {panel === 'pet' && <PetStatus />}
-        </AppShell>
-      </main>
-      <footer className="h-6 flex items-center px-3 text-[10px] text-[#8b949e] bg-[#161b22] border-t border-[#30363d] shrink-0">
-        <span>Codex Go · API :1977</span>
-        <span className="ml-auto">{panel}</span>
-      </footer>
+    <div className="app-root">
+      <TitleBar />
+      <div className="app-body">
+        <LeftSidebar
+          page={page}
+          sessionId={sessionId}
+          workspace={workspace}
+          onNavigate={setPage}
+          onResumeSession={resumeSession}
+          onNewSession={newSession}
+          onWorkspaceChange={setWorkspace}
+        />
+        {/* Center: main content */}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
+          {page === 'chat' && (
+            <ChatPage sessionId={sessionId} workspace={workspace} />
+          )}
+          {page === 'settings' && <SettingsPage />}
+        </div>
+        {/* Right panel */}
+        <RightPanel tab={rightTab} onTabChange={setRightTab} />
+      </div>
+      <div className="statusbar">
+        <span>Codex Go v1.0.0</span>
+        <span>Workspace: {workspace}</span>
+        <span style={{ marginLeft: 'auto' }}>Session: {sessionId.slice(-12)}</span>
+      </div>
     </div>
   );
 }
