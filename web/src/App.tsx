@@ -3,6 +3,7 @@ import AppShell from './components/Layout/AppShell';
 import ChatPanel from './components/Chat/ChatPanel';
 import SettingsPanel from './components/Settings/SettingsPanel';
 import PetStatus from './components/Pet/PetStatus';
+import TerminalPanel from './components/Terminal/TerminalPanel';
 
 type Panel = 'chat' | 'settings' | 'pet' | 'terminal' | 'files';
 
@@ -42,7 +43,7 @@ export default function App() {
       <main className="flex-1 overflow-hidden">
         <AppShell sessionId={sessionId} onResumeSession={resume} onNewSession={newSesh}>
           {panel === 'chat' && <ChatPanel sessionId={sessionId} />}
-          {panel === 'terminal' && <div className="flex items-center justify-center h-full text-[#8b949e]"><div className="text-center"><div className="text-4xl mb-3">⚡</div><p className="text-sm">Terminal coming soon</p></div></div>}
+          {panel === 'terminal' && <TerminalPanel />}
           {panel === 'files' && <div className="flex items-center justify-center h-full text-[#8b949e]"><div className="text-center"><div className="text-4xl mb-3">📁</div><p className="text-sm">File browser coming soon</p></div></div>}
           {panel === 'settings' && <SettingsPanel />}
           {panel === 'pet' && <PetStatus />}
