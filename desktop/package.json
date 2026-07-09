@@ -11,10 +11,9 @@
     "build": "electron-builder",
     "pack": "electron-builder --dir"
   },
-  "dependencies": {
-    "electron": "^33.0.0"
-  },
+  "dependencies": {},
   "devDependencies": {
+    "electron": "^33.0.0",
     "electron-builder": "^25.0.0"
   },
   "build": {
@@ -26,28 +25,26 @@
     "files": [
       "main.js",
       "pet.html",
-      "assets/**",
-      "../web-dist/**"
+      "web-dist/**",
+      "!node_modules/**"
     ],
     "extraResources": [
       {
-        "from": "../codex-go",
-        "to": "backend/codex-go"
+        "from": "codex-go${os === 'win32' ? '.exe' : ''}",
+        "to": "backend/codex-go${os === 'win32' ? '.exe' : ''}"
       }
     ],
     "mac": {
       "category": "public.app-category.developer-tools",
-      "target": ["dmg", "zip"],
-      "icon": "assets/icon.icns"
+      "target": ["dmg", "zip"]
     },
     "win": {
-      "target": ["nsis", "zip"],
-      "icon": "assets/icon.ico"
+      "target": ["portable"],
+      "sign": null
     },
     "linux": {
       "target": ["AppImage", "deb", "tar.gz"],
-      "category": "Development",
-      "icon": "assets/icon.png"
+      "category": "Development"
     },
     "nsis": {
       "oneClick": false,
