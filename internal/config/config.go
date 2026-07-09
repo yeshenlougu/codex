@@ -38,9 +38,17 @@ type AgentConfig struct {
 
 // ProviderConfig holds provider-specific settings.
 type ProviderConfig struct {
-	BaseURL string `yaml:"base_url"`
-	APIKey  string `yaml:"api_key"`
-	WireAPI string `yaml:"wire_api"` // "chat_completions" or "responses"
+	BaseURL      string      `yaml:"base_url"`
+	APIKey       string      `yaml:"api_key"`
+	WireAPI      string      `yaml:"wire_api"`
+	PoolStrategy string      `yaml:"pool_strategy"` // "fill_first" or "round_robin"
+	ExtraKeys    []KeyConfig `yaml:"extra_keys"`
+}
+
+// KeyConfig is an additional API key entry.
+type KeyConfig struct {
+	Key   string `yaml:"key"`
+	Label string `yaml:"label"`
 }
 
 // DefaultConfig returns a sensible default configuration.
