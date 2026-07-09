@@ -4,6 +4,7 @@ import ChatPanel from './components/Chat/ChatPanel';
 import SettingsPanel from './components/Settings/SettingsPanel';
 import PetStatus from './components/Pet/PetStatus';
 import TerminalPanel from './components/Terminal/TerminalPanel';
+import FileViewer from './components/Files/FileViewer';
 
 type Panel = 'chat' | 'settings' | 'pet' | 'terminal' | 'files';
 
@@ -44,7 +45,7 @@ export default function App() {
         <AppShell sessionId={sessionId} onResumeSession={resume} onNewSession={newSesh}>
           {panel === 'chat' && <ChatPanel sessionId={sessionId} />}
           {panel === 'terminal' && <TerminalPanel />}
-          {panel === 'files' && <div className="flex items-center justify-center h-full text-[#8b949e]"><div className="text-center"><div className="text-4xl mb-3">📁</div><p className="text-sm">File browser coming soon</p></div></div>}
+          {panel === 'files' && <FileViewer />}
           {panel === 'settings' && <SettingsPanel />}
           {panel === 'pet' && <PetStatus />}
         </AppShell>

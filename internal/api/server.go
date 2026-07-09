@@ -71,6 +71,14 @@ func (s *Server) Start() error {
 	// Config
 	mux.HandleFunc("/api/config", cors(s.handleGetConfig))
 
+	// Release update
+	mux.HandleFunc("/api/update", cors(s.handleUpdate))
+
+	// File browser
+	mux.HandleFunc("/api/files", cors(s.handleListFiles))
+	mux.HandleFunc("/api/files/content", cors(s.handleReadFile))
+	mux.HandleFunc("/api/files/diff", cors(s.handleDiff))
+
 	// Pet state
 	mux.HandleFunc("/api/pet-state", cors(s.handlePetState))
 

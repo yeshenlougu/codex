@@ -187,6 +187,34 @@ app.on('activate', () => {
   if (mainWindow) mainWindow.show();
 });
 
+// ============ Auto Update ============
+
+async function checkForUpdates() {
+  try {
+    const data = await new Promise((resolve, reject) => {
+      http.get(API_URL + '/api/update', (res) => {
+        let body = '';
+        res.on('data', c => body += c);
+        res.on('end', () => resolve(body));
+      }).on('error', () => resolve('{}'));
+    });
+    const info = JSON.parse(data);
+    if (info && info.has_update) {
+      // Show update notification
+      if (mainWindow && !mainWindow.isDestroyed()) {
+        mainWindow.webContents.executeJavaScript(`
+          document.dispatchEvent(new CustomEvent('codex-update', { detail: ${JSON.stringify(info)} }));
+        `);
+      }
+      // Update tray tooltip
+      if (tray) {
+        tray.setToolTip(`Codex Go - Update available: ${info.latest}`);
+      }
+      console.log(`[update] New version available: ${info.current} → ${info.latest}`);
+    }
+  } catch { /* offline, ignore */ }
+}
+
 // ============ App Lifecycle ============
 
 app.whenReady().then(() => {
@@ -194,6 +222,8 @@ app.whenReady().then(() => {
   createPetWindow();
   createTray();
   setInterval(pollPetState, 3000);
+  checkForUpdates();
+  setInterval(checkForUpdates, 3600000); // check every hour
 
   // Global shortcut: Ctrl+Shift+C to toggle Codex
   globalShortcut.register('CommandOrControl+Shift+C', () => {

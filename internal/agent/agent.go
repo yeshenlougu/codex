@@ -237,6 +237,26 @@ func (a *Agent) maybeSave() {
 // Stop halts the agent.
 func (a *Agent) Stop() { a.running = false }
 
+// CompressContext reduces message history when token count is high.
+// It keeps the system prompt + last N user/assistant pairs.
+func (a *Agent) CompressContext(keepPairs int) {
+	if len(a.messages) <= 2+keepPairs*2 {
+		return
+	}
+	// Preserve system message
+	var compressed []provider.Message
+	if len(a.messages) > 0 && a.messages[0].Role == "system" {
+		compressed = append(compressed, a.messages[0])
+	}
+	// Keep last N user+assistant pairs
+	start := len(a.messages) - keepPairs*2
+	if start < 1 {
+		start = 1
+	}
+	compressed = append(compressed, a.messages[start:]...)
+	a.messages = compressed
+}
+
 // Config returns the agent config.
 func (a *Agent) Config() *config.Config { return a.cfg }
 
