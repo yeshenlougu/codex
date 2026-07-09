@@ -17,7 +17,7 @@ export interface Session {
   id: string; created_at: string; updated_at: string;
   model: string; provider: string; title: string; messages: Message[];
 }
-export interface ChatResponse { session_id: string; content: string; turn_count: number; tool_calls: number; }
+export interface ChatResponse { session_id: string; content: string; turn_count: number; tool_calls: number; responding_agent?: string; }
 export interface Config {
   provider: string; model: string; base_url: string;
   api_key_masked: string; reasoning_effort: string; max_turns: number;
@@ -29,6 +29,72 @@ export interface WSMessage {
   type: 'chunk' | 'tool_call' | 'done' | 'error' | 'session';
   session_id?: string; content?: string;
   tool_name?: string; tool_args?: string; tool_output?: string; error?: string;
+}
+
+// === Agent Profile types ===
+
+export interface AgentProfile {
+  name: string;
+  description: string;
+  avatar: string;
+  is_builtin: boolean;
+  model: AgentModelConfig;
+  agent: AgentBehaviorConfig;
+  tools: AgentToolsConfig;
+  mcp?: AgentMCPConfig;
+  skills?: AgentSkillsConfig;
+  plugins?: AgentPluginsConfig;
+  hooks?: AgentHooksConfig;
+  subagents?: SubAgentRef[];
+}
+
+export interface AgentModelConfig {
+  provider: string;
+  model: string;
+  reasoning_effort?: string;
+}
+
+export interface AgentBehaviorConfig {
+  max_turns: number;
+  system_prompt: string;
+}
+
+export interface AgentToolsConfig {
+  shell: boolean;
+  file_read: boolean;
+  file_edit: boolean;
+}
+
+export interface AgentMCPConfig {
+  servers: AgentMCPServer[];
+}
+
+export interface AgentMCPServer {
+  name: string;
+  command: string;
+  args: string[];
+  enabled: boolean;
+}
+
+export interface AgentSkillsConfig {
+  dirs: string[];
+}
+
+export interface AgentPluginsConfig {
+  dirs: string[];
+}
+
+export interface AgentHooksConfig {
+  pre_tool: string;
+  post_tool: string;
+  on_session_start: string;
+  on_session_end: string;
+  post_tool_message: string;
+}
+
+export interface SubAgentRef {
+  name: string;
+  description: string;
 }
 
 // Backend pool types

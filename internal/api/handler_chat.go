@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 
 	"github.com/yeshenlougu/codex/internal/agent"
@@ -13,15 +14,17 @@ type ChatRequest struct {
 	SessionID string `json:"session_id"`
 	Message   string `json:"message"`
 	Stream    bool   `json:"stream"`
-	New       bool   `json:"new"` // create new session
+	New       bool   `json:"new"`       // create new session
+	AgentName string `json:"agent_name"` // which agent profile to use (empty = default)
 }
 
 // ChatResponse is the non-streaming chat response.
 type ChatResponse struct {
-	SessionID string `json:"session_id"`
-	Content   string `json:"content"`
-	TurnCount int    `json:"turn_count"`
-	ToolCalls int    `json:"tool_calls"`
+	SessionID       string `json:"session_id"`
+	Content         string `json:"content"`
+	TurnCount       int    `json:"turn_count"`
+	ToolCalls       int    `json:"tool_calls"`
+	RespondingAgent string `json:"responding_agent"`
 }
 
 func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
@@ -46,10 +49,23 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		sessionID = agent.NewSessionID()
 	}
 
-	ag, err := s.getOrCreateAgent(sessionID, true)
+	// Ensure the session/chat-room exists
+	ag, err := s.manager.GetAgent(sessionID, "")
 	if err != nil {
-		writeError(w, http.StatusInternalServerError, err.Error())
-		return
+		// Create new chat room with default agent
+		ag, err = s.manager.CreateSession(sessionID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+	}
+
+	// If agent_name specified and different from current, add to room
+	if req.AgentName != "" && req.AgentName != "default" {
+		if _, err := s.manager.AddAgent(sessionID, req.AgentName); err != nil {
+			log.Printf("[api] add agent %s: %v", req.AgentName, err)
+			// Don't fail; continue with existing agents
+		}
 	}
 
 	if req.Stream {
@@ -57,9 +73,8 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	// Non-streaming
-	toolCallCount := 0
-	result, err := ag.Run(req.Message, func(chunk string) {
+	// Non-streaming: use manager routing (handles @mentions)
+	result, respondingAgent, err := s.manager.SendMessage(sessionID, req.Message, func(chunk string) {
 		// accumulate only
 	})
 	if err != nil {
@@ -68,10 +83,11 @@ func (s *Server) handleChat(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, ChatResponse{
-		SessionID: sessionID,
-		Content:   result,
-		TurnCount: ag.TurnCount(),
-		ToolCalls: toolCallCount,
+		SessionID:       sessionID,
+		Content:         result,
+		TurnCount:       ag.TurnCount(),
+		ToolCalls:       0,
+		RespondingAgent: respondingAgent,
 	})
 }
 

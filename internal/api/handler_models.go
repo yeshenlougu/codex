@@ -15,7 +15,7 @@ func (s *Server) handleCapabilities(w http.ResponseWriter, r *http.Request) {
 	var caps map[provider.ModelType]bool
 	var byCap map[provider.ModelType][]provider.PoolEntryStatus
 
-	for _, ag := range s.sessions {
+	for _, ag := range s.manager.AllAgents() {
 		pool := ag.Pool()
 		caps = pool.Capabilities()
 		byCap = pool.ModelsByCapability()
@@ -65,7 +65,7 @@ func (s *Server) handleBackendModels(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
-	for _, ag := range s.sessions {
+	for _, ag := range s.manager.AllAgents() {
 		pool := ag.Pool()
 		statuses := pool.Status()
 

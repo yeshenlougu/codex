@@ -18,26 +18,27 @@ type Config struct {
 	Skills   SkillsConfig   `yaml:"skills"`
 	Plugins  PluginsConfig  `yaml:"plugins"`
 	Hooks    HooksConfig    `yaml:"hooks"`
+	Agents   AgentsConfig   `yaml:"agents"`
 }
 
 // ModelConfig is the model selection configuration.
 type ModelConfig struct {
-	Provider        string `yaml:"provider"`         // e.g. "openai", "beecode", "custom"
-	Model           string `yaml:"model"`            // e.g. "gpt-5.5", "deepseek-v4-pro"
-	ReasoningEffort string `yaml:"reasoning_effort"` // "low", "medium", "high", "xhigh"
+	Provider        string `yaml:"provider" json:"provider"`
+	Model           string `yaml:"model" json:"model"`
+	ReasoningEffort string `yaml:"reasoning_effort" json:"reasoning_effort"`
 }
 
 // ToolsConfig controls which tools are enabled.
 type ToolsConfig struct {
-	Shell    bool `yaml:"shell"`     // shell execution
-	FileRead bool `yaml:"file_read"` // file reading
-	FileEdit bool `yaml:"file_edit"` // file editing
+	Shell    bool `yaml:"shell" json:"shell"`
+	FileRead bool `yaml:"file_read" json:"file_read"`
+	FileEdit bool `yaml:"file_edit" json:"file_edit"`
 }
 
 // AgentConfig controls agent behavior.
 type AgentConfig struct {
-	MaxTurns     int    `yaml:"max_turns"`
-	SystemPrompt string `yaml:"system_prompt"`
+	MaxTurns     int    `yaml:"max_turns" json:"max_turns"`
+	SystemPrompt string `yaml:"system_prompt" json:"system_prompt"`
 }
 
 // ProviderConfig holds provider-specific settings.
@@ -80,35 +81,41 @@ type ModelEntry struct {
 
 // MCPConfig configures Model Context Protocol servers.
 type MCPConfig struct {
-	Servers []MCPServerConfig `yaml:"servers"`
+	Servers []MCPServerConfig `yaml:"servers" json:"servers"`
 }
 
 // MCPServerConfig is a single MCP server (stdio transport).
 type MCPServerConfig struct {
-	Name    string   `yaml:"name"`
-	Command string   `yaml:"command"`
-	Args    []string `yaml:"args"`
-	Env     []string `yaml:"env,omitempty"`
-	Enabled bool     `yaml:"enabled"`
+	Name    string   `yaml:"name" json:"name"`
+	Command string   `yaml:"command" json:"command"`
+	Args    []string `yaml:"args" json:"args"`
+	Env     []string `yaml:"env,omitempty" json:"env,omitempty"`
+	Enabled bool     `yaml:"enabled" json:"enabled"`
 }
 
 // SkillsConfig configures skill directory scanning.
 type SkillsConfig struct {
-	Dirs []string `yaml:"dirs"`
+	Dirs []string `yaml:"dirs" json:"dirs"`
 }
 
 // PluginsConfig configures plugin directory scanning.
 type PluginsConfig struct {
-	Dirs []string `yaml:"dirs"`
+	Dirs []string `yaml:"dirs" json:"dirs"`
 }
 
 // HooksConfig configures lifecycle and tool hooks.
 type HooksConfig struct {
-	PreTool         string `yaml:"pre_tool"`          // runs before each tool execution
-	PostTool        string `yaml:"post_tool"`         // runs after each tool execution
-	OnSessionStart  string `yaml:"on_session_start"`  // runs when a session is created
-	OnSessionEnd    string `yaml:"on_session_end"`    // runs when a session ends
-	PostToolMessage string `yaml:"post_tool_message"` // runs after LLM response tool calls
+	PreTool         string `yaml:"pre_tool" json:"pre_tool"`
+	PostTool        string `yaml:"post_tool" json:"post_tool"`
+	OnSessionStart  string `yaml:"on_session_start" json:"on_session_start"`
+	OnSessionEnd    string `yaml:"on_session_end" json:"on_session_end"`
+	PostToolMessage string `yaml:"post_tool_message" json:"post_tool_message"`
+}
+
+// AgentsConfig configures the multi-agent system.
+type AgentsConfig struct {
+	Dir       string `yaml:"dir"`        // directory for user agent profiles (default ~/.codex/agents)
+	Default   string `yaml:"default"`    // default agent profile name (default "default")
 }
 
 // DefaultConfig returns a sensible default configuration.

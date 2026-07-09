@@ -1,12 +1,13 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { streamMessage, getConfig } from '../lib/api';
+import { streamMessage, getConfig, listAgents } from '../lib/api';
+import type { AgentProfile } from '../lib/types';
 
 interface Props {
   sessionId: string;
   workspace: string;
 }
 
-interface Msg { role: 'user' | 'assistant'; content: string; files?: string[] }
+interface Msg { role: 'user' | 'assistant'; content: string; files?: string[]; agent?: string }
 
 export default function ChatPage({ sessionId, workspace }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -15,9 +16,14 @@ export default function ChatPage({ sessionId, workspace }: Props) {
   const [streaming, setStreaming] = useState('');
   const [provider, setProvider] = useState('openai');
   const [model, setModel] = useState('gpt-4');
+  const [agents, setAgents] = useState<AgentProfile[]>([]);
+  const [activeAgent, setActiveAgent] = useState('default');
   const bottomRef = useRef<HTMLDivElement>(null);
 
-  useEffect(() => { getConfig().then(c => { setProvider(c.provider); setModel(c.model); }).catch(() => {}); }, []);
+  useEffect(() => {
+    getConfig().then(c => { setProvider(c.provider); setModel(c.model); }).catch(() => {});
+    listAgents().then(a => setAgents(a.agents || [])).catch(() => {});
+  }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streaming]);
 
   const handleSend = useCallback(async () => {
@@ -37,16 +43,17 @@ export default function ChatPage({ sessionId, workspace }: Props) {
       (done) => {
         setStreaming('');
         const respFiles = [...new Set([...fileMatches, ...extractFiles(done)])];
-        setMessages((prev) => [...prev, { role: 'assistant', content: done, files: respFiles }]);
+        setMessages((prev) => [...prev, { role: 'assistant', content: done, files: respFiles, agent: activeAgent }]);
         setSending(false);
       },
       (err) => {
         setStreaming('');
-        setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err}` }]);
+        setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err}`, agent: activeAgent }]);
         setSending(false);
-      }
+      },
+      activeAgent !== 'default' ? activeAgent : undefined
     );
-  }, [input, sending, sessionId]);
+  }, [input, sending, sessionId, activeAgent]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
@@ -59,6 +66,18 @@ export default function ChatPage({ sessionId, workspace }: Props) {
         <span className="ctx-model"><span className="ctx-dot" /> {provider} / {model}</span>
         <span className="ctx-workspace">📁 {workspace}</span>
         <span className="ctx-session">#{sessionId.slice(-12)}</span>
+        {/* Agent selector */}
+        <select
+          className="ctx-agent-select"
+          value={activeAgent}
+          onChange={(e) => setActiveAgent(e.target.value)}
+          title="Select active agent"
+        >
+          {agents.length === 0 && <option value="default">🤖 default</option>}
+          {agents.map(a => (
+            <option key={a.name} value={a.name}>{a.avatar || '🤖'} {a.name}{a.is_builtin ? ' (built-in)' : ''}</option>
+          ))}
+        </select>
       </div>
 
       {/* Messages */}
@@ -68,6 +87,9 @@ export default function ChatPage({ sessionId, workspace }: Props) {
             <img src="/assets/mascot.png" alt="Codex" className="chat-empty-mascot" />
             <h2>Codex Go</h2>
             <p>Your AI coding companion. Read, write, edit code.<br />Explain, refactor, debug — all in one place.</p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 8 }}>
+              💡 Use <code>@agent-name</code> in your message to invoke a specific agent.
+            </p>
             <div className="chat-empty-hints">
               <span onClick={() => setInput('Explain this code')}>Explain this code</span>
               <span onClick={() => setInput('Write a function that')}>Write a function</span>
@@ -78,7 +100,7 @@ export default function ChatPage({ sessionId, workspace }: Props) {
         ) : (
           messages.map((m, i) => <MessageBlock key={i} msg={m} />)
         )}
-        {streaming && <MessageBlock msg={{ role: 'assistant', content: streaming }} streaming />}
+        {streaming && <MessageBlock msg={{ role: 'assistant', content: streaming, agent: activeAgent }} streaming />}
         <div ref={bottomRef} />
       </div>
 
@@ -90,7 +112,7 @@ export default function ChatPage({ sessionId, workspace }: Props) {
             value={input}
             onChange={(e) => { setInput(e.target.value); const t = e.target; t.style.height = 'auto'; t.style.height = Math.min(t.scrollHeight, 160) + 'px'; }}
             onKeyDown={handleKeyDown}
-            placeholder={`Ask Codex... (${workspace})`}
+            placeholder={`Ask ${activeAgent}... (${workspace})`}
             rows={1}
             disabled={sending}
           />
@@ -107,12 +129,15 @@ export default function ChatPage({ sessionId, workspace }: Props) {
 
 function MessageBlock({ msg, streaming }: { msg: Msg; streaming?: boolean }) {
   const isUser = msg.role === 'user';
+  const avatar = isUser ? '👤' : (msg.agent === 'default' ? '🤖' : '🤖');
+  const label = isUser ? 'You' : (msg.agent || 'Codex');
+
   return (
     <div className={`msg-block ${isUser ? 'msg-user' : 'msg-assistant'} ${streaming ? 'msg-streaming' : ''}`}>
-      <div className="msg-avatar">{isUser ? '👤' : '🤖'}</div>
+      <div className="msg-avatar">{avatar}</div>
       <div className="msg-body">
         <div className="msg-header">
-          <span className="msg-role">{isUser ? 'You' : 'Codex'}</span>
+          <span className="msg-role">{label}</span>
           {streaming && <span className="msg-thinking">Writing...</span>}
         </div>
         <div className="msg-content"><MarkdownContent text={msg.content} /></div>
@@ -176,6 +201,6 @@ function CodeBlock({ code, language }: { code: string; language: string }) {
 
 function extractFiles(text: string): string[] {
   const re = /[\w./-]+\.\w{1,6}/g;
-  const matches = text.match(re) || [];
+  const matches: string[] = text.match(re) || [];
   return [...new Set(matches.filter(f => !f.startsWith('http') && f.includes('.')))].slice(0, 10);
 }

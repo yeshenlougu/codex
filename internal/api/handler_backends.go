@@ -46,12 +46,11 @@ func (s *Server) handleBackends(w http.ResponseWriter, r *http.Request) {
 
 func (s *Server) listBackends(w http.ResponseWriter, r *http.Request) {
 	// Collect from first active agent, or from config if no agent
-	s.mu.RLock()
 	poolStatus := []interface{}{}
 	total := 0
 	healthy := 0
 	strategy := s.cfg.Provider.PoolStrategy
-	for _, ag := range s.sessions {
+	for _, ag := range s.manager.AllAgents() {
 		statuses := ag.Pool().Status()
 		total = len(statuses)
 		for _, st := range statuses {
@@ -62,7 +61,6 @@ func (s *Server) listBackends(w http.ResponseWriter, r *http.Request) {
 		}
 		break
 	}
-	s.mu.RUnlock()
 
 	// If no active agent, show from config
 	if total == 0 {
@@ -146,7 +144,7 @@ func (s *Server) addBackend(w http.ResponseWriter, r *http.Request) {
 
 	// Add to live pool
 	s.mu.RLock()
-	for _, ag := range s.sessions {
+	for _, ag := range s.manager.AllAgents() {
 		ag.Pool().Add(be.Key, be.Label, be.BaseURL, be.Weight, nil)
 		break
 	}
@@ -340,7 +338,7 @@ func (s *Server) doImportBackends(path string) ([]config.BackendConfig, string, 
 
 	// Add to live pool
 	s.mu.RLock()
-	for _, ag := range s.sessions {
+	for _, ag := range s.manager.AllAgents() {
 		for _, be := range backends {
 			ag.Pool().Add(be.Key, be.Label, be.BaseURL, be.Weight, nil)
 		}
@@ -384,7 +382,7 @@ func (s *Server) exportBackendsDownload(w http.ResponseWriter, r *http.Request) 
 
 func (s *Server) probeBackends(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
-	for _, ag := range s.sessions {
+	for _, ag := range s.manager.AllAgents() {
 		pool := ag.Pool()
 		s.mu.RUnlock()
 
@@ -440,7 +438,7 @@ func (s *Server) handleConfig(w http.ResponseWriter, r *http.Request) {
 	toolCount := 8
 
 	s.mu.RLock()
-	activeSessions := len(s.sessions)
+	activeSessions := s.manager.ActiveSessions()
 	backends := s.cfg.Provider.Backends
 	backendCount := len(backends)
 	s.mu.RUnlock()

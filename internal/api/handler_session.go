@@ -38,7 +38,6 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 	case "DELETE":
 		s.handleDeleteSession(w, r, id)
 	case "POST":
-		// POST /api/sessions/{id} creates/resumes
 		s.handleCreateSession(w, r, id)
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "GET, POST, DELETE supported")
@@ -51,7 +50,13 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request, id str
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	writeJSON(w, http.StatusOK, sess)
+
+	// Include agent participants in the response
+	agents := s.manager.ListAgents(id)
+	writeJSON(w, http.StatusOK, map[string]any{
+		"session": sess,
+		"agents":  agents,
+	})
 }
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request, id string) {
@@ -59,16 +64,14 @@ func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request, id 
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}
-	// Also remove active agent
-	s.mu.Lock()
-	delete(s.sessions, id)
-	s.mu.Unlock()
+	// Remove active session and all its agents
+	s.manager.RemoveSession(id)
 	writeJSON(w, http.StatusOK, map[string]string{"deleted": id})
 }
 
 func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request, id string) {
-	// Create a fresh session
-	ag, err := s.getOrCreateAgent(id, true)
+	// Create a fresh chat room with default agent
+	ag, err := s.manager.CreateSession(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -80,36 +83,14 @@ func (s *Server) handleCreateSession(w http.ResponseWriter, r *http.Request, id 
 	})
 }
 
-// handleGetConfig returns the current model/provider/key settings (keys masked).
-func (s *Server) handleGetConfig(w http.ResponseWriter, r *http.Request) {
-	if r.Method != "GET" {
-		writeError(w, http.StatusMethodNotAllowed, "GET required")
-		return
-	}
-	cfg := s.cfg
-	keyMasked := cfg.Provider.APIKey
-	if len(keyMasked) > 8 {
-		keyMasked = keyMasked[:4] + "****" + keyMasked[len(keyMasked)-4:]
-	}
-	writeJSON(w, http.StatusOK, map[string]any{
-		"provider":         cfg.Model.Provider,
-		"model":            cfg.Model.Model,
-		"base_url":         cfg.Provider.BaseURL,
-		"api_key_masked":   keyMasked,
-		"reasoning_effort": cfg.Model.ReasoningEffort,
-		"max_turns":        cfg.Agent.MaxTurns,
-		"tool_count":       8,
-		"active_sessions":  len(s.sessions),
-	})
-}
-
 // handleNewSession creates a new named session.
 func (s *Server) handleNewSession(w http.ResponseWriter, r *http.Request) {
 	id := agent.NewSessionID()
-	_, err := s.getOrCreateAgent(id, true)
+	ag, err := s.manager.CreateSession(id)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
 	}
+	_ = ag
 	writeJSON(w, http.StatusCreated, map[string]string{"session_id": id})
 }

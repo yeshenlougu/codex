@@ -5,7 +5,6 @@ import type { Config } from '../../lib/types';
 export default function AgentSettings() {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
-  const [saving, setSaving] = useState(false);
   const [msg, setMsg] = useState('');
 
   const load = useCallback(() => {
@@ -15,7 +14,7 @@ export default function AgentSettings() {
   useEffect(() => { load(); }, [load]);
 
   const save = async (updates: Record<string, unknown>) => {
-    setSaving(true); setMsg('');
+    setMsg('');
     try {
       await updateConfig(updates);
       setMsg('✅ Saved');
@@ -24,7 +23,6 @@ export default function AgentSettings() {
     } catch (e: any) {
       setMsg(`❌ ${e.message}`);
     }
-    setSaving(false);
   };
 
   if (loading) return <div className="p-4 text-sm text-[#8b949e]">Loading...</div>;

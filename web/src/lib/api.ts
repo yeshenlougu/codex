@@ -34,16 +34,17 @@ export async function createSession(id?: string): Promise<{ session_id: string }
 }
 
 // Chat
-export async function sendMessage(message: string, sessionId: string, opts?: { stream?: boolean }): Promise<ChatResponse> {
+export async function sendMessage(message: string, sessionId: string): Promise<ChatResponse> {
   return req('/chat', { method: 'POST', body: JSON.stringify({ message, session_id: sessionId, stream: false }) });
 }
 export async function streamMessage(
   message: string, sessionId: string,
   onChunk: (text: string) => void, onDone: (fullText: string) => void, onError: (err: string) => void,
+  agentName?: string,
 ) {
   const res = await fetch(BASE + '/chat', {
     method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ message, session_id: sessionId, stream: true }),
+    body: JSON.stringify({ message, session_id: sessionId, stream: true, agent_name: agentName || undefined }),
   });
   if (!res.ok) { const err = await res.json().catch(() => ({ error: res.statusText })); onError(err.error || `HTTP ${res.status}`); return; }
   const reader = res.body?.getReader(); if (!reader) { onError('No response body'); return; }
@@ -119,4 +120,44 @@ export async function getCapabilities(): Promise<{ capabilities: import('./types
 
 export async function getBackendModels(): Promise<{ backends: import('./types').BackendStatus[] }> {
   return req('/backends/models');
+}
+
+// === Agent Profiles ===
+
+export async function listAgents(): Promise<{ agents: import('./types').AgentProfile[] }> {
+  return req('/agents');
+}
+
+export async function getAgent(name: string): Promise<import('./types').AgentProfile> {
+  return req(`/agents/${encodeURIComponent(name)}`);
+}
+
+export async function createAgent(name: string, cloneFrom?: string): Promise<import('./types').AgentProfile> {
+  return req('/agents', { method: 'POST', body: JSON.stringify({ name, clone_from: cloneFrom || 'default' }) });
+}
+
+export async function updateAgent(name: string, updates: Partial<import('./types').AgentProfile>): Promise<{ updated: string }> {
+  return req(`/agents/${encodeURIComponent(name)}`, { method: 'PUT', body: JSON.stringify(updates) });
+}
+
+export async function deleteAgent(name: string): Promise<{ deleted: string }> {
+  return req(`/agents/${encodeURIComponent(name)}`, { method: 'DELETE' });
+}
+
+export async function cloneAgent(sourceName: string, newName: string): Promise<import('./types').AgentProfile> {
+  return req(`/agents/${encodeURIComponent(sourceName)}/clone`, { method: 'POST', body: JSON.stringify({ name: newName }) });
+}
+
+// === Session Agent Management ===
+
+export async function addAgentToSession(sessionId: string, agentName: string): Promise<{ session_id: string; agent: string; status: string }> {
+  return req(`/sessions/${encodeURIComponent(sessionId)}/agents`, { method: 'POST', body: JSON.stringify({ agent_name: agentName }) });
+}
+
+export async function removeAgentFromSession(sessionId: string, agentName: string): Promise<{ session_id: string; agent: string; status: string }> {
+  return req(`/sessions/${encodeURIComponent(sessionId)}/agents/${encodeURIComponent(agentName)}`, { method: 'DELETE' });
+}
+
+export async function listSessionAgents(sessionId: string): Promise<{ session_id: string; agents: string[] }> {
+  return req(`/sessions/${encodeURIComponent(sessionId)}/agents`);
 }

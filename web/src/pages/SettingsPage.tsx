@@ -1,12 +1,14 @@
 import { useState } from 'react';
 import AgentSettings from './settings/AgentSettings';
+import AgentManager from './settings/AgentManager';
 import BackendManager from './settings/BackendManager';
 import ImportExport from './settings/ImportExport';
 
-type SubPage = 'agent' | 'backends' | 'import-export';
+type SubPage = 'agent' | 'agents' | 'backends' | 'import-export';
 
 const subNav: { id: SubPage; label: string; icon: string }[] = [
-  { id: 'agent', label: 'Agent', icon: '🤖' },
+  { id: 'agent', label: 'Agent Config', icon: '🤖' },
+  { id: 'agents', label: 'Agent Manager', icon: '👥' },
   { id: 'backends', label: 'Backends', icon: '🔌' },
   { id: 'import-export', label: 'Import / Export', icon: '📦' },
 ];
@@ -42,6 +44,7 @@ export default function SettingsPage() {
           {subNav.find((x) => x.id === sub)?.label}
         </h2>
         {sub === 'agent' && <AgentSettings />}
+        {sub === 'agents' && <AgentManager />}
         {sub === 'backends' && <BackendManager />}
         {sub === 'import-export' && <ImportExport />}
       </div>

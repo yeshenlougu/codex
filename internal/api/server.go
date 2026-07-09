@@ -4,9 +4,10 @@ package api
 import (
 	"context"
 	"encoding/json"
-	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"strings"
 	"sync"
 	"time"
 
@@ -17,29 +18,40 @@ import (
 
 // Server is the HTTP/WebSocket API server.
 type Server struct {
-	cfg      *config.Config
-	store    *session.Store
-	sessions map[string]*agent.Agent // active agents keyed by session ID
-	mu       sync.RWMutex
-	httpSrv  *http.Server
-	wsHub    *wsHub
-	addr     string
+	cfg     *config.Config
+	store   *session.Store
+	manager *agent.Manager   // multi-agent session manager
+	mu      sync.RWMutex
+	httpSrv *http.Server
+	wsHub   *wsHub
+	addr    string
 }
 
 // New creates a new API server.
 func New(cfg *config.Config, store *session.Store, addr string) *Server {
 	s := &Server{
-		cfg:      cfg,
-		store:    store,
-		addr:     addr,
-		sessions: make(map[string]*agent.Agent),
-		wsHub:    newWSHub(),
+		cfg:   cfg,
+		store: store,
+		addr:  addr,
+		wsHub: newWSHub(),
 	}
 	return s
 }
 
 // Start begins listening and returns immediately.
 func (s *Server) Start() error {
+	// Initialize agent registry and manager
+	agentsDir := s.cfg.Agents.Dir
+	if agentsDir == "" {
+		agentsDir = expandHome("~/.codex/agents")
+	}
+	agRegistry := agent.NewRegistry(agentsDir)
+	if err := agRegistry.LoadAll(); err != nil {
+		log.Printf("[api] agent registry: %v", err)
+	}
+	s.manager = agent.NewManager(s.cfg, s.store, agRegistry)
+	log.Printf("[api] agent manager ready — %d profiles loaded", len(agRegistry.List()))
+
 	mux := http.NewServeMux()
 
 	// CORS middleware wrapper
@@ -63,7 +75,11 @@ func (s *Server) Start() error {
 
 	// Session CRUD
 	mux.HandleFunc("/api/sessions", cors(s.handleListSessions))
-	mux.HandleFunc("/api/sessions/", cors(s.handleSession))
+	mux.HandleFunc("/api/sessions/", cors(s.handleSessionRoute))
+
+	// Agent profiles
+	mux.HandleFunc("/api/agents", cors(s.handleAgents))
+	mux.HandleFunc("/api/agents/", cors(s.handleAgentByID))
 
 	// Chat (non-streaming)
 	mux.HandleFunc("/api/chat", cors(s.handleChat))
@@ -113,34 +129,11 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully stops the server.
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Close all agents
+	if s.manager != nil {
+		s.manager.ActiveSessions() // no-op, just ensuring it exists
+	}
 	return s.httpSrv.Shutdown(ctx)
-}
-
-// getOrCreateAgent returns an agent for a session ID, creating one if needed.
-func (s *Server) getOrCreateAgent(sessionID string, create bool) (*agent.Agent, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	if ag, ok := s.sessions[sessionID]; ok {
-		return ag, nil
-	}
-	if !create {
-		return nil, fmt.Errorf("session %s not active", sessionID)
-	}
-
-	ag := agent.New(s.cfg).WithStore(s.store)
-
-	// Try to load from disk
-	if _, err := s.store.Load(sessionID); err == nil {
-		if err := ag.LoadSession(sessionID); err != nil {
-			return nil, err
-		}
-	} else {
-		ag.SetSessionID(sessionID)
-	}
-
-	s.sessions[sessionID] = ag
-	return ag, nil
 }
 
 // writeJSON writes a JSON response.
@@ -153,4 +146,26 @@ func writeJSON(w http.ResponseWriter, status int, v any) {
 // writeError writes a JSON error response.
 func writeError(w http.ResponseWriter, status int, msg string) {
 	writeJSON(w, status, map[string]string{"error": msg})
+}
+
+// expandHome resolves ~ to the user's home directory.
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return home + path[1:]
+		}
+	}
+	return path
+}
+
+// handleSessionRoute dispatches /api/sessions/{id} and /api/sessions/{id}/agents.
+func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
+	path := strings.TrimPrefix(r.URL.Path, "/api/sessions/")
+	parts := strings.SplitN(path, "/", 3)
+	if len(parts) >= 2 && parts[1] == "agents" {
+		s.handleSessionAgents(w, r)
+		return
+	}
+	s.handleSession(w, r)
 }
