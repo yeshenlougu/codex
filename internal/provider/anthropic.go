@@ -151,8 +151,8 @@ func (c *AnthropicClient) parseStream(r io.Reader, onDelta func(string), onToolU
 		var event struct {
 			Type  string `json:"type"`
 			Delta struct {
-				Type       string `json:"type"`
-				Text       string `json:"text"`
+				Type        string `json:"type"`
+				Text        string `json:"text"`
 				PartialJSON string `json:"partial_json"`
 			} `json:"delta"`
 			ContentBlock struct {

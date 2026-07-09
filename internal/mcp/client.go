@@ -56,8 +56,8 @@ func NewMCPClient(command string, args ...string) (*MCPClient, error) {
 	}
 
 	c := &MCPClient{
-		cmd:   cmd,
-		stdin: stdin,
+		cmd:    cmd,
+		stdin:  stdin,
 		stdout: bufio.NewScanner(stdout),
 	}
 

@@ -102,7 +102,7 @@ func (c *OllamaClient) parseStream(r io.Reader, onDelta func(string), onToolCall
 				Content   string `json:"content"`
 				ToolCalls []struct {
 					Function struct {
-						Name      string `json:"name"`
+						Name      string         `json:"name"`
 						Arguments map[string]any `json:"arguments"`
 					} `json:"function"`
 				} `json:"tool_calls"`

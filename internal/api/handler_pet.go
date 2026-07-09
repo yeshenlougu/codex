@@ -35,8 +35,8 @@ func (s *Server) handlePetState(w http.ResponseWriter, r *http.Request) {
 	}
 
 	writeJSON(w, http.StatusOK, map[string]any{
-		"status":      status,
-		"agents":      agentCount,
-		"thinking":    thinkingCount,
+		"status":   status,
+		"agents":   agentCount,
+		"thinking": thinkingCount,
 	})
 }
