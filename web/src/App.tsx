@@ -1,4 +1,5 @@
 import { useState, useCallback } from 'react';
+import { ThemeProvider } from './lib/ThemeContext';
 import TitleBar from './components/TitleBar';
 import LeftSidebar from './components/LeftSidebar';
 import ChatPage from './pages/ChatPage';
@@ -26,6 +27,7 @@ export default function App() {
   const resumeSession = useCallback((id: string) => { setSessionId(id); setPage('chat'); }, []);
 
   return (
+    <ThemeProvider>
     <div className="app-root">
       <TitleBar />
       <div className="app-body">
@@ -54,5 +56,6 @@ export default function App() {
         <span style={{ marginLeft: 'auto' }}>Session: {sessionId.slice(-12)}</span>
       </div>
     </div>
+    </ThemeProvider>
   );
 }

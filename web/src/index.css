@@ -48,6 +48,49 @@
   background: var(--bg-root);
 }
 
+/* ---- Light theme ---- */
+[data-theme="light"] {
+  --bg-root: #ffffff;
+  --bg-panel: #f8f9fa;
+  --bg-elevated: #f0f1f3;
+  --bg-hover: rgba(0,0,0,0.04);
+  --bg-active: rgba(94,106,210,0.10);
+
+  --text-primary: #1a1d23;
+  --text-secondary: #3d4148;
+  --text-tertiary: #6b6f76;
+  --text-muted: #8f939b;
+
+  --accent: #5e6ad2;
+  --accent-hover: #4a55b8;
+  --accent-dim: rgba(94,106,210,0.12);
+
+  --border: rgba(0,0,0,0.08);
+  --border-strong: rgba(0,0,0,0.14);
+
+  --green: #1e874b;
+  --red: #d11726;
+  --yellow: #b8870a;
+}
+
+[data-theme="light"] .btn-primary { color: #fff; }
+[data-theme="light"] .btn-primary:hover { color: #fff; }
+[data-theme="light"] .chat-send-btn { color: #fff; }
+[data-theme="light"] .chat-empty-mascot {
+  filter: drop-shadow(0 0 16px rgba(94, 106, 210, 0.12));
+}
+[data-theme="light"] .app-body::before {
+  opacity: 0.02;
+}
+
+[data-theme="light"] ::-webkit-scrollbar-thumb {
+  background: rgba(0,0,0,0.12);
+}
+[data-theme="light"] ::-webkit-scrollbar-thumb:hover {
+  background: rgba(0,0,0,0.2);
+}
+
+/* ---- Global reset ---- */
 * { margin: 0; padding: 0; box-sizing: border-box; }
 
 body {

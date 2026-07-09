@@ -14,10 +14,13 @@ declare global {
   }
 }
 
+import { useTheme } from '../lib/ThemeContext';
+
 export default function TitleBar() {
   const api = window.electronAPI;
   const isMac = api?.platform === 'darwin';
   const showControls = api && !isMac;
+  const { theme, toggle } = useTheme();
 
   return (
     <div className="titlebar">
@@ -25,6 +28,15 @@ export default function TitleBar() {
         <img src="/assets/app-icon.png" alt="Codex Go" className="titlebar-icon" />
         <span>Codex Go</span>
       </div>
+      <div style={{ flex: 1 }} />
+      <button
+        className="titlebar-btn"
+        onClick={toggle}
+        title={theme === 'dark' ? 'Switch to light' : 'Switch to dark'}
+        style={{ fontSize: 13, width: 32 }}
+      >
+        {theme === 'dark' ? '☀' : '☾'}
+      </button>
       {showControls && (
         <div className="titlebar-win-controls">
           <button className="titlebar-btn" onClick={() => api!.minimize()} title="Minimize">─</button>
