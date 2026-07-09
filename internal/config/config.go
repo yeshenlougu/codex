@@ -56,11 +56,11 @@ type KeyConfig struct {
 // When configured, Codex acts as its own cc-switch: routing requests
 // across multiple backends with automatic failover and health checks.
 type BackendConfig struct {
-	Key      string `yaml:"key"`      // API key for this backend
-	Label    string `yaml:"label"`    // human-readable name
-	BaseURL  string `yaml:"base_url"` // full API base URL (e.g. https://api.openai.com/v1)
-	Provider string `yaml:"provider"` // "openai", "anthropic", "ollama"
-	Weight   int    `yaml:"weight"`   // routing weight (default 1, 0 = disabled)
+	Key      string `yaml:"key" json:"key"`
+	Label    string `yaml:"label" json:"label"`
+	BaseURL  string `yaml:"base_url" json:"base_url"`
+	Provider string `yaml:"provider" json:"provider,omitempty"`
+	Weight   int    `yaml:"weight" json:"weight"`
 }
 
 // DefaultConfig returns a sensible default configuration.

@@ -170,9 +170,128 @@ func MergeIntoConfig(cfg *config.Config, backends []config.BackendConfig, strate
 	if strategy != "" {
 		cfg.Provider.PoolStrategy = strategy
 	}
-	// Clear legacy fields since we're now using backends
 	if len(backends) > 0 {
 		cfg.Provider.APIKey = ""
 		cfg.Provider.ExtraKeys = nil
+	}
+}
+
+// ImportSQLDump parses a cc-switch SQLite dump and extracts provider backends.
+func ImportSQLDump(path string) ([]config.BackendConfig, string, error) {
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return nil, "", fmt.Errorf("read SQL dump: %w", err)
+	}
+
+	content := string(data)
+	var backends []config.BackendConfig
+
+	// Find all provider INSERT statements for app_type='codex'
+	// Pattern: INSERT INTO "providers" (...) VALUES ('id', 'codex', 'name', 'SETTINGS_JSON', ...);
+	lines := strings.Split(content, "INSERT INTO ")
+	for _, block := range lines {
+		if !strings.Contains(block, `"providers"`) {
+			continue
+		}
+		if !strings.Contains(block, "'codex'") {
+			continue
+		}
+		be := parseProviderRow(block)
+		if be != nil {
+			backends = append(backends, *be)
+		}
+	}
+
+	if len(backends) == 0 {
+		return nil, "", fmt.Errorf("no codex providers found in SQL dump")
+	}
+
+	return backends, "round_robin", nil
+}
+
+func parseProviderRow(block string) *config.BackendConfig {
+	// Extract VALUES (...) portion
+	idx := strings.Index(block, "VALUES (")
+	if idx < 0 {
+		return nil
+	}
+	vals := block[idx+8:] // after "VALUES ("
+
+	// Parse single-quoted fields
+	var fields []string
+	current := ""
+	inString := false
+	i := 0
+	for i < len(vals) {
+		ch := vals[i]
+		if ch == '\'' && !inString {
+			inString = true
+			current = ""
+			i++
+			continue
+		}
+		if ch == '\'' && inString {
+			if i+1 < len(vals) && vals[i+1] == '\'' {
+				current += "'"
+				i += 2
+				continue
+			}
+			inString = false
+			fields = append(fields, current)
+			current = ""
+			i++
+			continue
+		}
+		if inString {
+			current += string(ch)
+		}
+		i++
+	}
+
+	if len(fields) < 4 {
+		return nil
+	}
+
+	name := fields[2]
+	settingsJSON := fields[3]
+
+	// Parse settings_config JSON
+	var settings struct {
+		Auth   map[string]string `json:"auth"`
+		Config string            `json:"config"`
+	}
+	if err := json.Unmarshal([]byte(settingsJSON), &settings); err != nil {
+		return nil
+	}
+
+	apiKey := settings.Auth["OPENAI_API_KEY"]
+	if apiKey == "" {
+		return nil
+	}
+
+	// Parse TOML config for base_url
+	baseURL := ""
+	for _, line := range strings.Split(settings.Config, "\n") {
+		line = strings.TrimSpace(line)
+		if strings.HasPrefix(line, "base_url") {
+			parts := strings.SplitN(line, "=", 2)
+			if len(parts) == 2 {
+				baseURL = strings.Trim(strings.TrimSpace(parts[1]), `"`)
+			}
+		}
+	}
+
+	// Normalize: add /v1 if not present and it's a custom domain
+	if baseURL != "" && !strings.HasSuffix(baseURL, "/v1") && !strings.HasSuffix(baseURL, "/v1/") {
+		baseURL = strings.TrimRight(baseURL, "/") + "/v1"
+	}
+
+	label := strings.ToLower(strings.ReplaceAll(name, " ", "-"))
+
+	return &config.BackendConfig{
+		Key:     apiKey,
+		Label:   label,
+		BaseURL: baseURL,
+		Weight:  1,
 	}
 }

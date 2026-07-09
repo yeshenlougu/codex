@@ -69,7 +69,7 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/chat", cors(s.handleChat))
 
 	// Config
-	mux.HandleFunc("/api/config", cors(s.handleGetConfig))
+	mux.HandleFunc("/api/config", cors(s.handleConfig))
 
 	// Release update
 	mux.HandleFunc("/api/update", cors(s.handleUpdate))
@@ -84,8 +84,7 @@ func (s *Server) Start() error {
 
 	// Backend pool (cc-switch replacement)
 	mux.HandleFunc("/api/backends", cors(s.handleBackends))
-	mux.HandleFunc("/api/backends/import", cors(s.handleBackends))
-	mux.HandleFunc("/api/backends/export", cors(s.handleBackends))
+	mux.HandleFunc("/api/backends/", cors(s.handleBackends))
 
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)
