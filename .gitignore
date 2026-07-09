@@ -33,3 +33,6 @@ desktop/release/
 # Build output
 dist/
 internal/api/web-dist
+desktop/codex-go
+desktop/web-dist/
+desktop/release/

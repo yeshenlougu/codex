@@ -3,7 +3,8 @@
   "version": "1.0.0",
   "description": "Codex Go - AI Coding Agent with Desktop Pet",
   "main": "main.js",
-  "author": "yeshenlougu",
+  "author": "yeshenlougu <codex@yeshenlougu.dev>",
+  "homepage": "https://github.com/yeshenlougu/codex",
   "license": "MIT",
   "scripts": {
     "start": "electron .",
@@ -30,8 +31,8 @@
     ],
     "extraResources": [
       {
-        "from": "codex-go${os === 'win32' ? '.exe' : ''}",
-        "to": "backend/codex-go${os === 'win32' ? '.exe' : ''}"
+        "from": "codex-go",
+        "to": "backend/codex-go"
       }
     ],
     "mac": {

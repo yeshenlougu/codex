@@ -88,6 +88,32 @@ desktop: web build-all
 	@echo "✅ Desktop packages:"
 	@ls -lh $(DESKTOP_DIR)/codex-go-windows-portable.tar.gz $(DESKTOP_DIR)/Codex-Go-Setup-*.exe 2>/dev/null
 
+# Linux desktop: .deb + AppImage + tar.gz
+desktop-linux: web
+	@echo "🔨 Building Go backend for Linux..."
+	@GOOS=linux GOARCH=amd64 CGO_ENABLED=0 go build -ldflags "$(LDFLAGS)" -o $(DESKTOP_SRC)/codex-go ./cmd/codex/
+	@chmod +x $(DESKTOP_SRC)/codex-go
+	@echo "✅ Go binary: $$(du -h $(DESKTOP_SRC)/codex-go | cut -f1)"
+	@# Copy frontend
+	@rm -rf $(DESKTOP_SRC)/web-dist
+	@cp -r $(WEB_DIST) $(DESKTOP_SRC)/web-dist
+	@echo "✅ Frontend staged: $(DESKTOP_SRC)/web-dist/"
+	@# Install deps
+	@cd $(DESKTOP_SRC) && [ -d node_modules ] || npm install --silent 2>/dev/null
+	@# Package Linux targets
+	@echo "📦 Packaging Linux desktop (.deb + AppImage + tar.gz)..."
+	@cd $(DESKTOP_SRC) && npx electron-builder --linux deb AppImage tar.gz --x64 2>&1 | tail -5
+	@# Copy to dist
+	@mkdir -p $(DESKTOP_DIR)
+	@cp $(DESKTOP_SRC)/release/codex-desktop_*.deb $(DESKTOP_DIR)/ 2>/dev/null || true
+	@cp "$(DESKTOP_SRC)/release/Codex Go-"*.AppImage $(DESKTOP_DIR)/ 2>/dev/null || true
+	@cp $(DESKTOP_SRC)/release/codex-desktop-*.tar.gz $(DESKTOP_DIR)/ 2>/dev/null || true
+	@# Cleanup
+	@rm -rf $(DESKTOP_SRC)/codex-go $(DESKTOP_SRC)/web-dist $(DESKTOP_SRC)/release
+	@echo ""
+	@echo "✅ Linux desktop packages:"
+	@ls -lh $(DESKTOP_DIR)/*.deb $(DESKTOP_DIR)/*.AppImage $(DESKTOP_DIR)/*.tar.gz 2>/dev/null
+
 # =============================================================================
 # Web Frontend
 # =============================================================================
