@@ -248,11 +248,19 @@ func (p *Pool) weightedSelect(available []*PoolEntry) *PoolEntry {
 }
 
 // StartHealthCheck begins periodic probing of unhealthy backends.
+// Also performs an immediate model discovery on all backends.
 func (p *Pool) StartHealthCheck() {
 	if p.started {
 		return
 	}
 	p.started = true
+
+	// Immediate model discovery
+	go func() {
+		time.Sleep(500 * time.Millisecond) // brief delay for pool to settle
+		p.probeAll()
+	}()
+
 	go func() {
 		ticker := time.NewTicker(p.healthCheck)
 		defer ticker.Stop()
@@ -507,6 +515,19 @@ func (p *Pool) Entries() []*PoolEntry {
 	result := make([]*PoolEntry, len(p.entries))
 	copy(result, p.entries)
 	return result
+}
+
+// ForceDiscover triggers immediate model discovery on all backends.
+func (p *Pool) ForceDiscover() {
+	p.mu.RLock()
+	entries := make([]*PoolEntry, len(p.entries))
+	copy(entries, p.entries)
+	p.mu.RUnlock()
+
+	for _, e := range entries {
+		p.discoverModels(e)
+	}
+	log.Printf("[pool] force-discovered models on %d backends", len(entries))
 }
 
 func minInt(a, b int) int {

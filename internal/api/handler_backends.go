@@ -385,23 +385,26 @@ func (s *Server) exportBackendsDownload(w http.ResponseWriter, r *http.Request) 
 func (s *Server) probeBackends(w http.ResponseWriter, r *http.Request) {
 	s.mu.RLock()
 	for _, ag := range s.sessions {
-		// Trigger immediate health check
 		pool := ag.Pool()
 		s.mu.RUnlock()
 
-		// Do a quick probe of all unhealthy backends
+		// Force model discovery on all backends
+		pool.ForceDiscover()
+
 		statuses := pool.Status()
-		probed := 0
+		probed := len(statuses)
+		healthy := 0
 		for _, st := range statuses {
-			if st.Health != "healthy" {
-				probed++
+			if st.Health == "healthy" {
+				healthy++
 			}
 		}
 
 		writeJSON(w, http.StatusOK, map[string]interface{}{
 			"status":  "ok",
 			"probed":  probed,
-			"message": fmt.Sprintf("Probe triggered. %d unhealthy backends will be checked.", probed),
+			"healthy": healthy,
+			"message": fmt.Sprintf("Model discovery triggered on %d backends (%d healthy).", probed, healthy),
 		})
 		return
 	}
