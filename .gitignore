@@ -21,3 +21,10 @@ Thumbs.db
 config.yaml
 skills/
 /codex-go
+
+# Web frontend
+web/node_modules/
+web/dist/
+
+# Desktop (Electron)
+desktop/node_modules/

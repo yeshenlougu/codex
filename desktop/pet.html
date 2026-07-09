@@ -1,0 +1,338 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    user-select: none;
+    -webkit-app-region: drag;
+  }
+  canvas { display: block; width: 100%; height: 100%; }
+  .menu {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    display: flex;
+    gap: 2px;
+    -webkit-app-region: no-drag;
+  }
+  .menu button {
+    background: rgba(0,0,0,0.5);
+    border: none;
+    color: #8b949e;
+    font-size: 10px;
+    width: 18px;
+    height: 18px;
+    border-radius: 4px;
+    cursor: pointer;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .menu button:hover { background: rgba(88,166,255,0.3); color: #58a6ff; }
+  .bubble {
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(22,27,34,0.92);
+    border: 1px solid #30363d;
+    border-radius: 10px;
+    padding: 6px 10px;
+    font-size: 11px;
+    color: #e6edf3;
+    white-space: nowrap;
+    display: none;
+    animation: fadeIn 0.3s;
+    font-family: system-ui, sans-serif;
+  }
+  .bubble::after {
+    content: '';
+    position: absolute;
+    top: 100%;
+    left: 50%;
+    margin-left: -5px;
+    border: 5px solid transparent;
+    border-top-color: rgba(22,27,34,0.92);
+  }
+  @keyframes fadeIn { from { opacity: 0; transform: translateX(-50%) translateY(5px); } }
+</style>
+</head>
+<body>
+<div class="bubble" id="bubble"></div>
+<div class="menu" id="menu">
+  <button title="Feed" onclick="feed()">🍖</button>
+  <button title="Hide" onclick="hide()">−</button>
+</div>
+<canvas id="cvs" width="160" height="180"></canvas>
+
+<script>
+const { ipcRenderer } = require('electron');
+const cvs = document.getElementById('cvs');
+const ctx = cvs.getContext('2d');
+const bubble = document.getElementById('bubble');
+
+let petType = 'cat';
+let state = 'idle';   // idle | thinking | working | sleeping | eating
+let frame = 0;
+let animTimer = 0;
+let dragOffset = { x: 0, y: 0 };
+let eyeLookX = 0, eyeLookY = 0; // eye tracking
+
+// --- Pet Drawing Functions ---
+
+function drawCat(x, y, s) {
+  const c = ctx;
+  // Body
+  c.fillStyle = '#f5a623';
+  c.fillRect(x + 4*s, y + 6*s, 7*s, 6*s);
+  c.fillRect(x + 3*s, y + 5*s, 9*s, 2*s);
+  // Ears
+  c.fillStyle = '#f5a623';
+  c.fillRect(x + 2*s, y + 1*s, 3*s, 5*s);
+  c.fillRect(x + 10*s, y + 1*s, 3*s, 5*s);
+  // Inner ears
+  c.fillStyle = '#ffd8b1';
+  c.fillRect(x + 3*s, y + 1*s, 1*s, 3*s);
+  c.fillRect(x + 11*s, y + 1*s, 1*s, 3*s);
+  // Face
+  c.fillStyle = '#f5a623';
+  c.fillRect(x + 3*s, y + 4*s, 9*s, 5*s);
+  c.fillStyle = '#fff8e1';
+  c.fillRect(x + 4*s, y + 5*s, 7*s, 3*s);
+  // Eyes
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 5*s, y + 5*s, 2*s, 2*s);
+  c.fillRect(x + 8*s, y + 5*s, 2*s, 2*s);
+  // Pupils (track mouse)
+  let ex = 0, ey = 0;
+  if (Math.abs(eyeLookX) > 0.3) ex = eyeLookX > 0 ? 1 : -1;
+  if (Math.abs(eyeLookY) > 0.3) ey = eyeLookY > 0 ? 1 : -1;
+  c.fillStyle = '#ffffff';
+  c.fillRect(x + 5*s + (ex > 0 ? 1*s : 0), y + 5*s + (ey > 0 ? 1*s : 0), 1*s, 1*s);
+  c.fillRect(x + 8*s + (ex > 0 ? 1*s : 0), y + 5*s + (ey > 0 ? 1*s : 0), 1*s, 1*s);
+  // Nose
+  c.fillStyle = '#ff6b6b';
+  c.fillRect(x + 7*s, y + 6*s, 1*s, 1*s);
+  // Mouth
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 6*s, y + 7*s, 3*s, 1*s);
+  // Whiskers
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 1*s, y + 6*s, 3*s, 0.5*s);
+  c.fillRect(x + 1*s, y + 7*s, 2*s, 0.5*s);
+  c.fillRect(x + 11*s, y + 6*s, 3*s, 0.5*s);
+  c.fillRect(x + 12*s, y + 7*s, 2*s, 0.5*s);
+  // Tail
+  c.fillStyle = '#f5a623';
+  const tailWag = Math.sin(frame * 0.3) * 2 * s;
+  c.fillRect(x + 12*s + tailWag, y + 7*s, 3*s, 1*s);
+  // Paws
+  c.fillStyle = '#fff8e1';
+  c.fillRect(x + 4*s, y + 12*s, 2*s, 2*s);
+  c.fillRect(x + 9*s, y + 12*s, 2*s, 2*s);
+}
+
+function drawDog(x, y, s) {
+  const c = ctx;
+  // Body
+  c.fillStyle = '#c8a87c';
+  c.fillRect(x + 3*s, y + 6*s, 9*s, 6*s);
+  c.fillRect(x + 2*s, y + 5*s, 11*s, 2*s);
+  // Ears (floppy)
+  c.fillStyle = '#8b6914';
+  c.fillRect(x + 1*s, y + 1*s, 3*s, 6*s);
+  c.fillRect(x + 11*s, y + 1*s, 3*s, 6*s);
+  // Face
+  c.fillStyle = '#c8a87c';
+  c.fillRect(x + 2*s, y + 3*s, 11*s, 5*s);
+  c.fillStyle = '#f5deb3';
+  c.fillRect(x + 3*s, y + 4*s, 9*s, 3*s);
+  // Eyes
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 4*s, y + 4*s, 2*s, 2*s);
+  c.fillRect(x + 9*s, y + 4*s, 2*s, 2*s);
+  c.fillStyle = '#ffffff';
+  c.fillRect(x + 5*s, y + 4*s, 1*s, 1*s);
+  c.fillRect(x + 10*s, y + 4*s, 1*s, 1*s);
+  // Nose
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 7*s, y + 5*s, 2*s, 1*s);
+  // Tongue (panting)
+  if (state === 'working') {
+    c.fillStyle = '#ff6b8a';
+    c.fillRect(x + 6*s, y + 7*s, 3*s, 2*s);
+  }
+  // Tail (wagging)
+  c.fillStyle = '#c8a87c';
+  const tailWag = Math.sin(frame * 0.4) * 3 * s;
+  c.fillRect(x + 12*s + tailWag, y + 5*s, 2*s, 1*s);
+  // Paws
+  c.fillStyle = '#f5deb3';
+  c.fillRect(x + 3*s, y + 12*s, 2*s, 2*s);
+  c.fillRect(x + 10*s, y + 12*s, 2*s, 2*s);
+}
+
+function drawFox(x, y, s) {
+  const c = ctx;
+  // Body
+  c.fillStyle = '#e8751a';
+  c.fillRect(x + 3*s, y + 6*s, 9*s, 6*s);
+  c.fillStyle = '#ffffff';
+  c.fillRect(x + 5*s, y + 8*s, 5*s, 4*s);
+  // Face
+  c.fillStyle = '#e8751a';
+  c.fillRect(x + 3*s, y + 4*s, 9*s, 4*s);
+  c.fillStyle = '#ffffff';
+  c.fillRect(x + 4*s, y + 5*s, 7*s, 2*s);
+  // Ears (triangular)
+  c.fillStyle = '#e8751a';
+  c.fillRect(x + 2*s, y + 0*s, 2*s, 5*s);
+  c.fillRect(x + 11*s, y + 0*s, 2*s, 5*s);
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 2*s, y + 1*s, 1*s, 3*s);
+  c.fillRect(x + 11*s, y + 1*s, 1*s, 3*s);
+  // Eyes
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 5*s, y + 5*s, 1.5*s, 1.5*s);
+  c.fillRect(x + 8.5*s, y + 5*s, 1.5*s, 1.5*s);
+  c.fillStyle = '#ffffff';
+  c.fillRect(x + 5.5*s, y + 5*s, 0.5*s, 0.5*s);
+  c.fillRect(x + 9*s, y + 5*s, 0.5*s, 0.5*s);
+  // Nose
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 7*s, y + 6*s, 1.5*s, 1*s);
+  // Tail (bushy)
+  c.fillStyle = '#e8751a';
+  const tailWag = Math.sin(frame * 0.35) * 2 * s;
+  c.fillRect(x + 12*s + tailWag, y + 6*s, 2*s, 3*s);
+  c.fillStyle = '#ffffff';
+  c.fillRect(x + 13*s + tailWag, y + 8*s, 2*s, 1*s);
+  // Paws
+  c.fillStyle = '#2d3436';
+  c.fillRect(x + 4*s, y + 12*s, 2*s, 1.5*s);
+  c.fillRect(x + 9*s, y + 12*s, 2*s, 1.5*s);
+}
+
+function drawSleeping(x, y, s, type) {
+  // Draw pet sleeping - eyes closed
+  const c = ctx;
+  // Dim the whole pet
+  c.globalAlpha = 0.7;
+  if (type === 'cat') drawCat(x, y, s);
+  else if (type === 'dog') drawDog(x, y, s);
+  else drawFox(x, y, s);
+  c.globalAlpha = 1;
+  // ZZZ
+  c.fillStyle = '#58a6ff';
+  c.font = `${8*s}px system-ui`;
+  c.fillText('Z', x + 10*s, y);
+  c.fillText('z', x + 12*s, y - 4*s);
+  c.fillText('z', x + 13*s, y - 8*s);
+}
+
+function drawThinking(x, y, s, type) {
+  const c = ctx;
+  // Thought bubble
+  c.fillStyle = 'rgba(22,27,34,0.85)';
+  c.beginPath();
+  c.ellipse(x + 8*s, y - 6*s, 5*s, 4*s, 0, 0, Math.PI * 2);
+  c.fill();
+  c.fillStyle = '#e6edf3';
+  c.font = `${3*s}px system-ui`;
+  c.fillText('🤔', x + 6*s, y - 4*s);
+  // Draw pet
+  if (type === 'cat') drawCat(x, y, s);
+  else if (type === 'dog') drawDog(x, y, s);
+  else drawFox(x, y, s);
+}
+
+// --- Animation Loop ---
+function render() {
+  requestAnimationFrame(render);
+  frame++;
+  const s = 10; // pixel scale
+  const x = Math.floor((cvs.width - 15 * s) / 2);
+  const y = Math.floor((cvs.height - 14 * s) / 2);
+  ctx.clearRect(0, 0, cvs.width, cvs.height);
+
+  // Background shadow
+  ctx.fillStyle = 'rgba(0,0,0,0.15)';
+  ctx.beginPath();
+  ctx.ellipse(cvs.width/2, y + 14*s, 6*s, 1.5*s, 0, 0, Math.PI * 2);
+  ctx.fill();
+
+  // Draw based on state
+  if (state === 'sleeping') {
+    drawSleeping(x, y + Math.sin(frame * 0.02) * 2, s, petType);
+  } else if (state === 'thinking') {
+    drawThinking(x, y, s, petType);
+  } else {
+    // idle, working, eating
+    const bounce = (state === 'working') ? Math.abs(Math.sin(frame * 0.1)) * 3 : Math.sin(frame * 0.05) * 1.5;
+    const offsetY = y + bounce;
+    if (petType === 'cat') drawCat(x, offsetY, s);
+    else if (petType === 'dog') drawDog(x, offsetY, s);
+    else drawFox(x, offsetY, s);
+  }
+
+  // State label
+  ctx.fillStyle = 'rgba(0,0,0,0.6)';
+  ctx.fillRect(0, cvs.height - 20, cvs.width, 20);
+  ctx.fillStyle = '#8b949e';
+  ctx.font = '10px system-ui';
+  ctx.textAlign = 'center';
+  const labels = { idle: '😺 Chilling', thinking: '🤔 Thinking...', working: '⚡ Working', sleeping: '💤 Zzz', eating: '🍖 Yum!' };
+  ctx.fillText(labels[state] || state, cvs.width/2, cvs.height - 6);
+  ctx.textAlign = 'start';
+}
+
+// --- IPC Listeners ---
+ipcRenderer.on('pet-state', (event, newState) => {
+  state = newState;
+});
+
+ipcRenderer.on('pet-type', (event, newType) => {
+  petType = newType;
+});
+
+// --- User Interaction ---
+cvs.addEventListener('mousedown', (e) => {
+  ipcRenderer.send('pet-action', 'drag-start');
+});
+
+cvs.addEventListener('click', (e) => {
+  const rect = cvs.getBoundingClientRect();
+  const rx = e.clientX - rect.left;
+  const ry = e.clientY - rect.top;
+  // If clicked on pet body area, show reaction
+  bubble.style.display = 'block';
+  const msgs = ['Meow!', 'Woof!', 'Purr...', '♥', 'Hello!', '⚡', 'Zzz...'];
+  bubble.textContent = msgs[Math.floor(Math.random() * msgs.length)];
+  setTimeout(() => { bubble.style.display = 'none'; }, 1500);
+
+  if (state === 'sleeping') {
+    ipcRenderer.send('pet-action', 'wake');
+  }
+});
+
+// Eye tracking
+document.addEventListener('mousemove', (e) => {
+  const rect = cvs.getBoundingClientRect();
+  const cx = rect.left + rect.width / 2;
+  const cy = rect.top + rect.height / 2;
+  eyeLookX = (e.clientX - cx) / (rect.width / 2);
+  eyeLookY = (e.clientY - cy) / (rect.height / 2);
+});
+
+function feed() { ipcRenderer.send('pet-action', 'feed'); }
+function hide() { ipcRenderer.send('pet-action', 'hide'); }
+
+render();
+</script>
+</body>
+</html>
