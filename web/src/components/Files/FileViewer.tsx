@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { FileTree } from './FileTree';
+import FileTree from './FileTree';
 
 interface FileEntry {
   name: string; path: string; is_dir: boolean; size: number;
