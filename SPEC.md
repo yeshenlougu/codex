@@ -242,3 +242,182 @@ Model Capabilities:
 - vision 工具 → SelectFor(ModelVision)
 - video 工具 → SelectFor(ModelVideoGen)
 - audio_stt / audio_tts / embedding 工具
+
+---
+
+## 10. CI/CD 自动构建管线
+
+### 10.1 现状
+
+- 无 `.github/workflows/` 目录（现仅有 Rust 项目遗留的 `.github/actions/`）
+- Makefile 已覆盖 `build / build-all / desktop / release / test / clean`
+- 跨平台编译能力完整（linux/mac/windows, amd64/arm64）
+
+### 10.2 需要的 Workflow
+
+#### CI (Pull Request) — `.github/workflows/ci.yml`
+
+```
+触发: push/PR → golang 分支
+步骤:
+  1. checkout
+  2. setup-go 1.23+
+  3. setup-node 22+（前端 tsc 检查）
+  4. go vet ./...
+  5. go test ./internal/... -count=1
+  6. cd web && npm ci && npx tsc --noEmit
+  7. make build（验证 CLI 可构建）
+  8. make build-all（验证全平台交叉编译）
+```
+
+#### Release — `.github/workflows/release.yml`
+
+```
+触发: tag push v*.*.*
+步骤:
+  1. checkout
+  2. setup-go + setup-node
+  3. make build-all（全平台 CLI 二进制）
+  4. make web（前端构建）
+  5. 打包 tar.gz（每个平台 CLI + checksums.txt）
+  6. make desktop（Windows portable + NSIS installer）
+  7. make desktop-linux（.deb + AppImage + tar.gz）
+  8. 创建 GitHub Release + 上传所有 artifacts
+  9. (可选) 自动更新版本号 commit
+```
+
+#### 仅 PR 时不发版
+
+CI workflow 确保只验证不发布。Release workflow 仅在 tag push 触发。
+
+### 10.3 设计决策
+
+- **不引入 Docker**：Go 静态编译 + CGO_ENABLED=0，无系统依赖
+- **不引入 Bazel**：Go 项目用原生 go toolchain，不继承 Rust 项目的 Bazel
+- **桌面打包**：仅 Windows/Linux 在 CI 可构建（macOS 需 GitHub Actions macOS runner）
+- **checksums**：每个 release 附带 sha256 checksums.txt 验证完整性
+
+---
+
+## 11. spec / plan 工作流支持
+
+### 11.1 现状
+
+- 交互模式现有命令：`/exit` `/history` `/clear` `/save` `/sessions`
+- 项目已有 `SPEC.md`（本文件），格式为编号章节 + 代码示例
+- 用户偏好"spec-before-code"：先写 SPEC.md 再编码
+
+### 11.2 功能设计
+
+#### 11.2.1 交互式 slash 命令
+
+| 命令 | 功能 | 示例 |
+|------|------|------|
+| `/spec [描述]` | 生成 SPEC.md，按模板输出 | `/spec 支持多语言 UI 切换` |
+| `/plan [spec文件]` | 读 SPEC 生成实施计划（分阶段任务列表） | `/plan` (默认读 SPEC.md) |
+| `/tasks` | 列出当前 plan 的任务状态（类似 todo） | `/tasks` |
+| `/implement [task-id]` | 标记开始实现某个任务 | `/implement 3` |
+
+#### 11.2.2 独立子命令
+
+```bash
+# 创建新 spec（从模板）
+codex-go spec new <feature-name>
+
+# 查看已有 spec
+codex-go spec show [file]
+
+# 从 spec 生成 plan
+codex-go plan generate <spec-file>
+
+# 列出 plan 任务
+codex-go plan list
+```
+
+#### 11.2.3 实现方式
+
+```
+交互模式 /spec:
+  1. 用户输入 "/spec 功能描述"
+  2. Agent 构造 prompt: "根据以下描述生成 SPEC.md..."
+  3. AI 返回结构化 SPEC 内容
+  4. 写入 SPEC-<feature>.md 到项目根目录
+  5. 打印文件路径
+
+交互模式 /plan:
+  1. 用户输入 "/plan" 或 "/plan SPEC-xxx.md"
+  2. Agent 读取指定 SPEC
+  3. AI 分解为分阶段任务列表
+  4. 写入 PLAN.md（格式：Phase → Tasks → 验收标准）
+  5. 打印任务概览
+```
+
+### 11.3 数据格式
+
+#### SPEC 模板（SPEC-<feature>.md）
+
+```markdown
+# <Feature Name>
+
+## 1. 背景与动机
+
+## 2. 目标
+
+## 3. 设计方案
+
+### 3.1 架构
+
+### 3.2 数据结构
+
+### 3.3 流程
+
+## 4. 影响分析
+
+## 5. 实施路线
+
+### Phase 1: ...
+
+### Phase 2: ...
+```
+
+#### PLAN 模板（PLAN.md）
+
+```markdown
+# Implementation Plan for <Feature>
+
+## Phase 1: <Name>
+- [ ] Task 1.1: <description> — 预计 1天
+- [ ] Task 1.2: <description> — 预计 0.5天
+
+## Phase 2: <Name>
+- [ ] Task 2.1: <description>
+...
+
+## 验收标准
+- [ ] 标准 1
+- [ ] 标准 2
+```
+
+### 11.4 与现有系统集成
+
+- `/spec` 和 `/plan` 复用现有 Agent.Run() —— 只是 prompt 构造不同
+- SPEC/PLAN 文件写入用现有 write_file 工具
+- 不新增 internal 包，在 main.go 的 `runInteractive()` 中加 case 分支
+
+### 11.5 实现路线
+
+#### Phase 1: CI/CD（1天）
+- 创建 `.github/workflows/ci.yml`
+- 创建 `.github/workflows/release.yml`
+- 本地验证 CI 步骤（make test, make build-all）
+- 推送到 GitHub 验证 workflow 触发
+
+#### Phase 2: spec/plan（2天）
+- `main.go`: 添加 `/spec` `/plan` `/tasks` `/implement` 交互命令
+- CLI 子命令: `codex-go spec new/show` `codex-go plan generate/list`
+- 模板文件放到 `~/.codex/templates/` 或在代码内嵌
+- 集成测试（交互模式 mock）
+
+#### Phase 3: 收尾（0.5天）
+- 更新 README 中的命令列表
+- 更新 Makefile help 文档

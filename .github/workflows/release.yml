@@ -1,0 +1,73 @@
+name: Release
+
+on:
+  push:
+    tags: ["v*.*.*"]
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Build all platforms
+        run: make build-all
+
+      - name: Generate checksums
+        run: cd dist/cli && sha256sum codex-go-* > checksums.txt
+
+      - name: Package CLI archives
+        run: |
+          cd dist/cli
+          for f in codex-go-linux-amd64 codex-go-linux-arm64 \
+                   codex-go-darwin-amd64 codex-go-darwin-arm64; do
+            [ -f "$f" ] && tar -czf "$f.tar.gz" "$f"
+          done
+          for f in codex-go-windows-amd64.exe; do
+            [ -f "$f" ] && zip "${f%.exe}.zip" "$f"
+          done
+
+      - name: Build desktop (Windows portable)
+        run: make desktop
+
+      - name: Build desktop (Linux packages)
+        run: make desktop-linux
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          name: "Codex Go ${{ github.ref_name }}"
+          body: |
+            ## Codex Go ${{ github.ref_name }}
+
+            ### CLI Binaries
+            - Linux (amd64, arm64)
+            - macOS (amd64, arm64)
+            - Windows (amd64)
+
+            ### Desktop Packages
+            - Windows: portable (.tar.gz) + NSIS installer (.exe)
+            - Linux: .deb + AppImage + tar.gz
+
+            Build commit: ${{ github.sha }}
+          files: |
+            dist/cli/codex-go-*
+            dist/cli/checksums.txt
+            dist/desktop/*.tar.gz
+            dist/desktop/*.deb
+            dist/desktop/*.AppImage
+            dist/desktop/Codex-Go-Setup-*.exe
+          draft: false
+          prerelease: false

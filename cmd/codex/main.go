@@ -8,9 +8,11 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
+	"strconv"
 	"strings"
 	"syscall"
 	"time"
+	"unicode"
 
 	"gopkg.in/yaml.v3"
 
@@ -86,6 +88,18 @@ func main() {
 	// Subcommand: provider import/export (cc-switch migration)
 	if flag.NArg() >= 2 && flag.Arg(0) == "provider" {
 		handleProviderCmd(cfg, flag.Arg(1), flag.Args()[2:])
+		return
+	}
+
+	// Subcommand: spec (new, show)
+	if flag.NArg() >= 1 && flag.Arg(0) == "spec" {
+		handleSpecCLI(flag.Args()[1:])
+		return
+	}
+
+	// Subcommand: plan (generate, list)
+	if flag.NArg() >= 1 && flag.Arg(0) == "plan" {
+		handlePlanCLI(cfg, flag.Args()[1:])
 		return
 	}
 
@@ -374,6 +388,7 @@ func runInteractive(ag *agent.Agent) {
 		fmt.Printf("Session: %s\n", sid)
 	}
 	fmt.Println("Type /exit, /history, /clear, /save, /sessions")
+	fmt.Println("      /spec <desc>, /plan [spec], /tasks, /implement <n>")
 
 	scanner := bufio.NewScanner(os.Stdin)
 	for {
@@ -417,6 +432,14 @@ func runInteractive(ag *agent.Agent) {
 			if store != nil {
 				listSessionsCmd(store)
 			}
+		case strings.HasPrefix(input, "/spec"):
+			handleSpecCommand(ag, input)
+		case strings.HasPrefix(input, "/plan"):
+			handlePlanCommand(ag, input)
+		case input == "/tasks":
+			handleTasksCommand()
+		case strings.HasPrefix(input, "/implement"):
+			handleImplementCommand(input)
 		default:
 			fmt.Println()
 			_, err := ag.Run(input, func(chunk string) {
@@ -427,5 +450,335 @@ func runInteractive(ag *agent.Agent) {
 				fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			}
 		}
+	}
+}
+
+// ---- spec / plan / tasks / implement handlers ----
+
+const specPromptTemplate = `You are writing a technical specification document. Generate a SPEC document based on this description:
+
+%s
+
+Write the complete specification document to %s using the write_file tool.
+
+The specification must follow this format in Chinese:
+
+# <Feature Name>
+
+## 1. 背景与动机
+Why this feature is needed. What problem it solves.
+
+## 2. 目标
+Clear, measurable goals.
+
+## 3. 设计方案
+### 3.1 架构
+High-level architecture. Data flow. Component diagram described in text.
+
+### 3.2 数据结构
+Key data structures, API shapes, config schemas. Use code blocks.
+
+### 3.3 流程
+Key workflows as step-by-step sequences.
+
+## 4. 影响分析
+What existing systems are affected. Migration path if any. Breaking changes.
+
+## 5. 实施路线
+### Phase 1: ...
+### Phase 2: ...
+### Phase 3: ...
+
+Be thorough but concise. Every section should have substance, not placeholder text.`
+
+const planPromptTemplate = `You are writing an implementation plan. Read the specification file %s (use read_file tool), then generate a detailed implementation plan.
+
+Write the plan to PLAN.md using the write_file tool.
+
+The plan must follow this format in Chinese:
+
+# Implementation Plan for <Feature>
+
+## Phase 1: <Phase Name>
+- [ ] Task 1.1: <task description> — 预计 <N>天
+- [ ] Task 1.2: <task description> — 预计 <N>天
+
+## Phase 2: <Phase Name>
+- [ ] Task 2.1: <task description> — 预计 <N>天
+...
+
+## 验收标准
+- [ ] 标准 1
+- [ ] 标准 2
+
+Guidelines:
+- Each phase should be independently shippable
+- Tasks should be small enough to complete in 0.5-2 days
+- Include testing, documentation, and code review as tasks where appropriate
+- Acceptance criteria should be verifiable and concrete`
+
+func handleSpecCommand(ag *agent.Agent, input string) {
+	desc := strings.TrimSpace(strings.TrimPrefix(input, "/spec"))
+	if desc == "" {
+		fmt.Println("Usage: /spec <feature description>")
+		fmt.Println("Example: /spec 添加暗色模式支持")
+		return
+	}
+
+	filename := fmt.Sprintf("SPEC-%s.md", slugify(desc))
+	prompt := fmt.Sprintf(specPromptTemplate, desc, filename)
+
+	fmt.Printf("\n📝 Generating spec → %s ...\n\n", filename)
+	_, err := ag.Run(prompt, func(chunk string) {
+		fmt.Print(chunk)
+	})
+	fmt.Println()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	} else {
+		fmt.Printf("\n✅ Spec saved → %s\n", filename)
+	}
+}
+
+func handlePlanCommand(ag *agent.Agent, input string) {
+	specFile := strings.TrimSpace(strings.TrimPrefix(input, "/plan"))
+	if specFile == "" {
+		specFile = "SPEC.md"
+	}
+
+	prompt := fmt.Sprintf(planPromptTemplate, specFile)
+
+	fmt.Printf("\n📋 Generating plan from %s → PLAN.md ...\n\n", specFile)
+	_, err := ag.Run(prompt, func(chunk string) {
+		fmt.Print(chunk)
+	})
+	fmt.Println()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+	} else {
+		fmt.Println("\n✅ Plan saved → PLAN.md")
+	}
+}
+
+func handleTasksCommand() {
+	data, err := os.ReadFile("PLAN.md")
+	if err != nil {
+		fmt.Println("No PLAN.md found in current directory. Use /plan to generate one.")
+		return
+	}
+
+	fmt.Println()
+	taskNum := 0
+	scanner := bufio.NewScanner(strings.NewReader(string(data)))
+	for scanner.Scan() {
+		line := scanner.Text()
+		trimmed := strings.TrimSpace(line)
+		switch {
+		case strings.HasPrefix(trimmed, "## ") || strings.HasPrefix(trimmed, "### "):
+			fmt.Printf("\n%s\n", trimmed)
+		case strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]"):
+			taskNum++
+			desc := strings.TrimPrefix(strings.TrimPrefix(trimmed, "- [x] "), "- [X] ")
+			fmt.Printf("  %d. ✅ %s\n", taskNum, desc)
+		case strings.HasPrefix(trimmed, "- [ ]"):
+			taskNum++
+			desc := strings.TrimPrefix(trimmed, "- [ ] ")
+			fmt.Printf("  %d. ⬜ %s\n", taskNum, desc)
+		}
+	}
+	fmt.Println()
+}
+
+func handleImplementCommand(input string) {
+	taskID := strings.TrimSpace(strings.TrimPrefix(input, "/implement"))
+	if taskID == "" {
+		fmt.Println("Usage: /implement <task-number>")
+		fmt.Println("Example: /implement 3")
+		return
+	}
+
+	data, err := os.ReadFile("PLAN.md")
+	if err != nil {
+		fmt.Println("No PLAN.md found in current directory.")
+		return
+	}
+
+	lines := strings.Split(string(data), "\n")
+	taskIdx := 0
+	found := false
+	for i, line := range lines {
+		trimmed := strings.TrimSpace(line)
+		if strings.HasPrefix(trimmed, "- [ ]") || strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
+			taskIdx++
+			target := strconv.Itoa(taskIdx)
+			if target == taskID {
+				if strings.Contains(line, "[x]") || strings.Contains(line, "[X]") {
+					fmt.Printf("Task %s is already completed.\n", taskID)
+					return
+				}
+				lines[i] = strings.Replace(line, "- [ ]", "- [x]", 1)
+				found = true
+				break
+			}
+		}
+	}
+
+	if !found {
+		fmt.Printf("Task %s not found in PLAN.md (total: %d tasks)\n", taskID, taskIdx)
+		return
+	}
+
+	if err := os.WriteFile("PLAN.md", []byte(strings.Join(lines, "\n")), 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error writing PLAN.md: %v\n", err)
+		return
+	}
+	fmt.Printf("✅ Task %s marked as completed in PLAN.md\n", taskID)
+}
+
+// slugify converts Chinese/English description to a filename-safe slug.
+func slugify(s string) string {
+	// Take first 30 chars, keep letters/digits, replace spaces with dash
+	var b strings.Builder
+	runes := []rune(s)
+	maxLen := 30
+	if len(runes) < maxLen {
+		maxLen = len(runes)
+	}
+	for i := 0; i < maxLen; i++ {
+		r := runes[i]
+		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' {
+			b.WriteRune(r)
+		} else if unicode.IsSpace(r) || r == ',' || r == '、' {
+			b.WriteRune('-')
+		}
+		// Other characters (Chinese, etc.) are skipped
+	}
+	result := strings.Trim(b.String(), "-")
+	if result == "" {
+		result = "feature"
+	}
+	return strings.ToLower(result)
+}
+
+// ---- CLI subcommand handlers (spec / plan) ----
+
+const specTemplate = `# %s
+
+## 1. 背景与动机
+<!-- 描述为什么需要这个功能，它解决什么问题 -->
+
+## 2. 目标
+<!-- 可衡量的目标 -->
+
+## 3. 设计方案
+### 3.1 架构
+<!-- 高层架构、数据流、组件关系 -->
+
+### 3.2 数据结构
+<!-- 关键数据结构、API 形态、配置 schema -->
+
+### 3.3 流程
+<!-- 核心工作流的步骤序列 -->
+
+## 4. 影响分析
+<!-- 影响哪些现有系统、迁移路径、破坏性变更 -->
+
+## 5. 实施路线
+### Phase 1: <!-- 名称 -->
+<!-- 描述 -->
+
+### Phase 2: <!-- 名称 -->
+<!-- 描述 -->
+`
+
+func handleSpecCLI(args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: codex-go spec <new|show> [args...]")
+		fmt.Fprintln(os.Stderr, "  spec new <name>     Create a new spec from template")
+		fmt.Fprintln(os.Stderr, "  spec show [file]    Display a spec file (default: SPEC.md)")
+		os.Exit(1)
+	}
+
+	switch args[0] {
+	case "new":
+		name := "feature"
+		if len(args) > 1 {
+			name = args[1]
+		}
+		filename := fmt.Sprintf("SPEC-%s.md", slugify(name))
+		if _, err := os.Stat(filename); err == nil {
+			fmt.Fprintf(os.Stderr, "Error: %s already exists.\n", filename)
+			os.Exit(1)
+		}
+		content := fmt.Sprintf(specTemplate, name)
+		if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("✅ Created %s — fill in the sections and use /plan to generate a plan.\n", filename)
+
+	case "show":
+		file := "SPEC.md"
+		if len(args) > 1 {
+			file = args[1]
+		}
+		data, err := os.ReadFile(file)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println(string(data))
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown spec subcommand: %s\n", args[0])
+		fmt.Fprintln(os.Stderr, "Usage: codex-go spec <new|show> [args...]")
+		os.Exit(1)
+	}
+}
+
+func handlePlanCLI(cfg *config.Config, args []string) {
+	if len(args) == 0 {
+		fmt.Fprintln(os.Stderr, "Usage: codex-go plan <generate|list> [args...]")
+		fmt.Fprintln(os.Stderr, "  plan generate [spec]  Generate PLAN.md from a spec (default: SPEC.md)")
+		fmt.Fprintln(os.Stderr, "  plan list             List tasks from PLAN.md")
+		os.Exit(1)
+	}
+
+	switch args[0] {
+	case "generate":
+		specFile := "SPEC.md"
+		if len(args) > 1 {
+			specFile = args[1]
+		}
+		if _, err := os.Stat(specFile); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %s not found.\n", specFile)
+			fmt.Fprintf(os.Stderr, "Run 'codex-go spec new <name>' to create one.\n")
+			os.Exit(1)
+		}
+		if cfg.Provider.APIKey == "" && len(cfg.Provider.Backends) == 0 {
+			fmt.Fprintln(os.Stderr, "Error: No API key configured. Plan generation requires an LLM backend.")
+			os.Exit(1)
+		}
+		ag := agent.New(cfg)
+		prompt := fmt.Sprintf(planPromptTemplate, specFile)
+		fmt.Printf("📋 Generating plan from %s → PLAN.md ...\n", specFile)
+		result, err := ag.Run(prompt, func(chunk string) {
+			fmt.Print(chunk)
+		})
+		fmt.Println()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+			os.Exit(1)
+		}
+		_ = result
+		fmt.Println("✅ Plan saved → PLAN.md")
+
+	case "list":
+		handleTasksCommand()
+
+	default:
+		fmt.Fprintf(os.Stderr, "Unknown plan subcommand: %s\n", args[0])
+		fmt.Fprintln(os.Stderr, "Usage: codex-go plan <generate|list> [args...]")
+		os.Exit(1)
 	}
 }

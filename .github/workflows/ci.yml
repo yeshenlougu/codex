@@ -1,0 +1,44 @@
+name: CI
+
+on:
+  push:
+    branches: [golang]
+  pull_request:
+    branches: [golang]
+
+jobs:
+  test-and-build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: "1.22"
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22"
+
+      - name: Go vet
+        run: go vet ./...
+
+      - name: Go unit tests
+        run: go test ./internal/... -count=1 -v
+
+      - name: Install frontend deps
+        run: cd web && npm ci
+
+      - name: TypeScript check
+        run: cd web && npx tsc --noEmit
+
+      - name: Build CLI (current platform)
+        run: make build
+
+      - name: Build all platforms
+        run: make build-all
+
+      - name: Verify CLI works
+        run: ./dist/cli/codex-go --version
