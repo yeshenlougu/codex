@@ -91,7 +91,6 @@ func (s *Server) listConfigBackends() []provider.PoolEntryStatus {
 	for _, be := range s.cfg.Provider.Backends {
 		result = append(result, provider.PoolEntryStatus{
 			Label:    be.Label,
-			Provider: be.Provider,
 			BaseURL:  be.BaseURL,
 			Weight:   be.Weight,
 			Health:   "unknown",
@@ -148,7 +147,7 @@ func (s *Server) addBackend(w http.ResponseWriter, r *http.Request) {
 	// Add to live pool
 	s.mu.RLock()
 	for _, ag := range s.sessions {
-		ag.Pool().Add(be.Key, be.Label, be.BaseURL, be.Provider, be.Weight)
+		ag.Pool().Add(be.Key, be.Label, be.BaseURL, be.Weight, nil)
 		break
 	}
 	s.mu.RUnlock()
@@ -185,8 +184,8 @@ func (s *Server) updateBackend(w http.ResponseWriter, r *http.Request) {
 			if be.Weight > 0 {
 				s.cfg.Provider.Backends[i].Weight = be.Weight
 			}
-			if be.Provider != "" {
-				s.cfg.Provider.Backends[i].Provider = be.Provider
+			if len(be.Models) > 0 {
+				s.cfg.Provider.Backends[i].Models = be.Models
 			}
 			found = true
 			break
@@ -343,7 +342,7 @@ func (s *Server) doImportBackends(path string) ([]config.BackendConfig, string, 
 	s.mu.RLock()
 	for _, ag := range s.sessions {
 		for _, be := range backends {
-			ag.Pool().Add(be.Key, be.Label, be.BaseURL, be.Provider, be.Weight)
+			ag.Pool().Add(be.Key, be.Label, be.BaseURL, be.Weight, nil)
 		}
 		break
 	}

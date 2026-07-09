@@ -63,6 +63,25 @@ func buildPool(cfg *config.Config) *provider.Pool {
 	}
 	pool := provider.NewPool(strategy)
 
+	// Helper: convert config ModelEntry to provider ModelInfo
+	toModelInfo := func(entries []config.ModelEntry) []provider.ModelInfo {
+		out := make([]provider.ModelInfo, 0, len(entries))
+		for _, e := range entries {
+			mt, auto := provider.ModelType(e.Type), true
+			if e.Type != "" {
+				auto = false // user explicitly set type
+			} else {
+				mt, _ = provider.DetectModelType(e.Name)
+			}
+			out = append(out, provider.ModelInfo{
+				Name: e.Name,
+				Type: mt,
+				Auto: auto,
+			})
+		}
+		return out
+	}
+
 	// New-style: multi-endpoint backends
 	if len(cfg.Provider.Backends) > 0 {
 		for _, be := range cfg.Provider.Backends {
@@ -70,24 +89,19 @@ func buildPool(cfg *config.Config) *provider.Pool {
 			if baseURL == "" {
 				baseURL = cfg.Provider.BaseURL
 			}
-			providerType := be.Provider
-			if providerType == "" {
-				providerType = cfg.Model.Provider
-			}
-			pool.Add(be.Key, be.Label, baseURL, providerType, be.Weight)
+			pool.Add(be.Key, be.Label, baseURL, be.Weight, toModelInfo(be.Models))
 		}
 		return pool
 	}
 
 	// Legacy: single base_url + api_key + extra_keys
 	baseURL := cfg.Provider.BaseURL
-	providerType := cfg.Model.Provider
 
 	if cfg.Provider.APIKey != "" {
-		pool.Add(cfg.Provider.APIKey, "default", baseURL, providerType, 1)
+		pool.Add(cfg.Provider.APIKey, "default", baseURL, 1, nil)
 	}
 	for _, kc := range cfg.Provider.ExtraKeys {
-		pool.Add(kc.Key, kc.Label, baseURL, providerType, 1)
+		pool.Add(kc.Key, kc.Label, baseURL, 1, nil)
 	}
 
 	return pool

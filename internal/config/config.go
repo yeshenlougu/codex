@@ -55,12 +55,23 @@ type KeyConfig struct {
 // BackendConfig is a fully independent API endpoint entry.
 // When configured, Codex acts as its own cc-switch: routing requests
 // across multiple backends with automatic failover and health checks.
+// Models field optionally declares known models and their types;
+// if empty, models are auto-discovered from the /models endpoint during health checks.
 type BackendConfig struct {
-	Key      string `yaml:"key" json:"key"`
-	Label    string `yaml:"label" json:"label"`
-	BaseURL  string `yaml:"base_url" json:"base_url"`
-	Provider string `yaml:"provider" json:"provider,omitempty"`
-	Weight   int    `yaml:"weight" json:"weight"`
+	Key      string            `yaml:"key" json:"key"`
+	Label    string            `yaml:"label" json:"label"`
+	BaseURL  string            `yaml:"base_url" json:"base_url"`
+	Weight   int               `yaml:"weight" json:"weight"`
+	Models   []ModelEntry      `yaml:"models,omitempty" json:"models,omitempty"`
+	Headers  map[string]string `yaml:"headers,omitempty" json:"headers,omitempty"`
+}
+
+// ModelEntry declares a known model with optional metadata.
+// Type can be left empty to auto-detect from the model name.
+type ModelEntry struct {
+	Name          string `yaml:"name" json:"name"`
+	Type          string `yaml:"type,omitempty" json:"type,omitempty"`
+	ContextLength int    `yaml:"context_length,omitempty" json:"context_length,omitempty"`
 }
 
 // DefaultConfig returns a sensible default configuration.

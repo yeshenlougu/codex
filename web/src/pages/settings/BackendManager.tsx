@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from 'react';
-import { getBackends, addBackend, deleteBackend, probeBackends } from '../../lib/api';
-import type { BackendStatus } from '../../lib/types';
+import { getBackends, addBackend, deleteBackend, probeBackends, getBackendModels } from '../../lib/api';
+import type { BackendStatus, ModelInfo } from '../../lib/types';
+
+const TYPE_ICONS: Record<string, string> = {
+  chat: '💬', vision: '👁️', image_gen: '🖼️', video_gen: '🎥',
+  audio_stt: '🎤', audio_tts: '🔊', embedding: '📊',
+};
 
 export default function BackendManager() {
   const [backends, setBackends] = useState<BackendStatus[]>([]);
@@ -9,17 +14,26 @@ export default function BackendManager() {
   const [adding, setAdding] = useState(false);
   const [msg, setMsg] = useState('');
 
-  // New backend form
   const [newLabel, setNewLabel] = useState('');
   const [newKey, setNewKey] = useState('');
   const [newUrl, setNewUrl] = useState('');
 
   const load = useCallback(async () => {
     try {
-      const data = await getBackends();
+      // Use the models endpoint to get rich backend info
+      const data = await getBackendModels();
       setBackends(data.backends);
-      setStrategy(data.strategy);
-    } catch (e) {}
+      // Also get strategy from normal backends endpoint
+      const be = await getBackends();
+      setStrategy(be.strategy);
+    } catch {
+      // Fallback: use normal backends endpoint
+      try {
+        const data = await getBackends();
+        setBackends(data.backends);
+        setStrategy(data.strategy);
+      } catch {}
+    }
     setLoading(false);
   }, []);
 
@@ -32,7 +46,7 @@ export default function BackendManager() {
       await addBackend({ label: newLabel, key: newKey, base_url: newUrl, weight: 1 });
       setNewLabel(''); setNewKey(''); setNewUrl(''); setAdding(false);
       load();
-      setMsg('✅ Backend added');
+      setMsg('✅ Backend added — models will be auto-discovered');
     } catch (e: any) { setMsg(`❌ ${e.message}`); }
   };
 
@@ -46,72 +60,138 @@ export default function BackendManager() {
   };
 
   const doProbe = async () => {
-    try { await probeBackends(); setMsg('🔍 Health probe triggered'); load(); }
+    try { await probeBackends(); setMsg('🔍 Health probe + model discovery triggered'); load(); }
     catch (e: any) { setMsg(`❌ ${e.message}`); }
   };
 
-  if (loading) return <div className="p-4 text-sm text-[#8b949e]">Loading...</div>;
+  if (loading) return <div className="p-4 text-sm" style={{ color: 'var(--text-muted)' }}>Loading...</div>;
 
   const healthColor = (h: string) =>
-    h === 'healthy' ? 'bg-green-500' : h === 'degraded' ? 'bg-yellow-500' : h === 'unhealthy' ? 'bg-red-500' : 'bg-gray-500';
+    h === 'healthy' ? '#27a644' : h === 'degraded' ? '#d19a00' : h === 'unhealthy' ? '#e5484d' : '#62666d';
 
   return (
-    <div className="overflow-auto max-h-full">
-      <div className="p-5 space-y-2">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-[#e6edf3]">🔌 Backends</h2>
-          <div className="flex gap-2">
-            <button onClick={doProbe} className="px-2 py-1 text-[10px] bg-[#21262d] hover:bg-[#30363d] text-[#8b949e] rounded">
-              🔍 Probe
+    <div style={{ overflow: 'auto', maxHeight: '100%' }}>
+      <div style={{ padding: '16px 20px' }}>
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+          <h2 style={{ fontSize: 14, fontWeight: 600, color: 'var(--text-primary)' }}>🔌 Backends</h2>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <button onClick={doProbe} className="btn" style={{ fontSize: 11 }}>
+              🔍 Probe & Discover
             </button>
-            <button onClick={() => setAdding(!adding)}
-              className="px-2 py-1 text-[10px] bg-[#238636] hover:bg-[#2ea043] text-white rounded">
+            <button onClick={() => setAdding(!adding)} className="btn btn-primary" style={{ fontSize: 11 }}>
               + Add
             </button>
           </div>
         </div>
 
-        {msg && <div className={`text-xs mb-2 ${msg.startsWith('✅') ? 'text-green-400' : msg.startsWith('🔍') ? 'text-blue-400' : 'text-red-400'}`}>{msg}</div>}
+        {msg && (
+          <div style={{ fontSize: 11, marginBottom: 8, color: msg.startsWith('✅') ? 'var(--green)' : msg.startsWith('🔍') ? 'var(--accent)' : 'var(--red)' }}>
+            {msg}
+          </div>
+        )}
 
         {adding && (
-          <div className="bg-[#161b22] border border-[#30363d] rounded p-3 mb-3 space-y-2">
+          <div style={{ background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 'var(--radius-md)', padding: 12, marginBottom: 12 }}>
             <input placeholder="Label" value={newLabel} onChange={e => setNewLabel(e.target.value)}
-              className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-xs text-[#e6edf3]" />
+              className="input" style={{ width: '100%', marginBottom: 8 }} />
             <input placeholder="API Key" value={newKey} onChange={e => setNewKey(e.target.value)} type="password"
-              className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-xs text-[#e6edf3]" />
+              className="input" style={{ width: '100%', marginBottom: 8 }} />
             <input placeholder="Base URL (https://...)" value={newUrl} onChange={e => setNewUrl(e.target.value)}
-              className="w-full bg-[#0d1117] border border-[#30363d] rounded px-2 py-1 text-xs text-[#e6edf3]" />
-            <div className="flex gap-2">
-              <button onClick={doAdd} className="px-3 py-1 text-xs bg-[#238636] hover:bg-[#2ea043] text-white rounded">Save</button>
-              <button onClick={() => setAdding(false)} className="px-3 py-1 text-xs bg-[#21262d] hover:bg-[#30363d] text-[#8b949e] rounded">Cancel</button>
+              className="input" style={{ width: '100%', marginBottom: 8 }} />
+            <div style={{ display: 'flex', gap: 8 }}>
+              <button onClick={doAdd} className="btn btn-primary" style={{ fontSize: 11 }}>Save</button>
+              <button onClick={() => setAdding(false)} className="btn" style={{ fontSize: 11 }}>Cancel</button>
             </div>
           </div>
         )}
 
-        <div className="space-y-1">
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
           {backends.length === 0 && (
-            <div className="text-xs text-[#8b949e] py-4 text-center">
+            <div style={{ fontSize: 12, color: 'var(--text-muted)', padding: '24px 0', textAlign: 'center' }}>
               No backends configured. Add one above, or import from cc-switch.
             </div>
           )}
           {backends.map(be => (
-            <div key={be.label} className="flex items-center gap-2 py-2 px-3 bg-[#161b22] rounded border border-[#21262d] group">
-              <span className={`w-2 h-2 rounded-full shrink-0 ${healthColor(be.health)}`} title={be.health} />
-              <div className="flex-1 min-w-0">
-                <div className="text-xs text-[#e6edf3] truncate">{be.label}</div>
-                <div className="text-[10px] text-[#8b949e] truncate">{be.base_url}</div>
+            <div key={be.label} style={{
+              background: 'var(--bg-panel)', border: '1px solid var(--border)',
+              borderRadius: 'var(--radius-md)', padding: '12px 14px',
+            }}>
+              {/* Header */}
+              <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 8 }}>
+                <span style={{
+                  width: 8, height: 8, borderRadius: '50%', flexShrink: 0,
+                  background: healthColor(be.health),
+                }} />
+                <span style={{ fontSize: 13, fontWeight: 600, color: 'var(--text-primary)', flex: 1 }}>
+                  {be.label}
+                </span>
+                <span style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+                  {be.successes > 0 && <span style={{ color: 'var(--green)', marginRight: 6 }}>{be.successes}✓</span>}
+                  {be.failures > 0 && <span style={{ color: 'var(--red)' }}>{be.failures}✗</span>}
+                </span>
+                <button onClick={() => doDelete(be.label)}
+                  style={{ background: 'none', border: 'none', color: 'var(--text-muted)', cursor: 'pointer', fontSize: 12, padding: '2px 4px' }}
+                  title="Remove">✕</button>
               </div>
-              <div className="text-[10px] text-[#8b949e] shrink-0">
-                {be.successes > 0 && <span className="text-green-400 mr-1">{be.successes}✓</span>}
-                {be.failures > 0 && <span className="text-red-400">{be.failures}✗</span>}
+
+              {/* URL */}
+              <div style={{ fontSize: 11, color: 'var(--text-muted)', marginBottom: 6, fontFamily: 'JetBrains Mono, monospace' }}>
+                {be.base_url}
               </div>
-              <button onClick={() => doDelete(be.label)}
-                className="opacity-0 group-hover:opacity-100 px-1 text-[10px] text-red-400 hover:text-red-300 transition-opacity">✕</button>
+
+              {/* Models (grouped by type) */}
+              {be.models && be.models.length > 0 && (
+                <div style={{ display: 'flex', flexDirection: 'column', gap: 4 }}>
+                  {be.models_grouped ? (
+                    Object.entries(be.models_grouped).map(([type, models]) => (
+                      <div key={type} style={{ display: 'flex', alignItems: 'flex-start', gap: 6 }}>
+                        <span style={{
+                          fontSize: 10, fontWeight: 600, color: 'var(--accent)',
+                          background: 'var(--accent-dim)', padding: '1px 6px', borderRadius: 3,
+                          flexShrink: 0, minWidth: 80, textAlign: 'center',
+                        }}>
+                          {TYPE_ICONS[type] || '📦'} {type}
+                        </span>
+                        <span style={{ fontSize: 10, color: 'var(--text-secondary)', lineHeight: 1.6 }}>
+                          {models.map((m: ModelInfo, i: number) => (
+                            <span key={m.name}>
+                              {i > 0 && ', '}
+                              <span style={{ fontFamily: 'JetBrains Mono, monospace' }}>{m.name}</span>
+                              {m.auto && <span style={{ color: 'var(--text-muted)', fontSize: 9 }}> auto</span>}
+                            </span>
+                          ))}
+                        </span>
+                      </div>
+                    ))
+                  ) : (
+                    <div style={{ display: 'flex', flexWrap: 'wrap', gap: 4 }}>
+                      {be.models.map((m: ModelInfo) => (
+                        <span key={m.name} style={{
+                          fontSize: 10, padding: '2px 8px', borderRadius: 'var(--radius-lg)',
+                          background: m.auto ? 'var(--bg-hover)' : 'var(--accent-dim)',
+                          border: '1px solid var(--border)',
+                          color: m.auto ? 'var(--text-secondary)' : 'var(--accent)',
+                          fontFamily: 'JetBrains Mono, monospace',
+                        }}>
+                          {TYPE_ICONS[m.type] || '📦'} {m.name}
+                          {!m.auto && <span style={{ fontSize: 8, marginLeft: 3 }}>✎</span>}
+                        </span>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {(!be.models || be.models.length === 0) && (
+                <div style={{ fontSize: 10, color: 'var(--text-muted)', fontStyle: 'italic' }}>
+                  Models not yet discovered — click "Probe & Discover"
+                </div>
+              )}
             </div>
           ))}
         </div>
 
-        <div className="text-[10px] text-[#8b949e] pt-2 border-t border-[#21262d]">
+        <div style={{ fontSize: 10, color: 'var(--text-muted)', paddingTop: 8, borderTop: '1px solid var(--border)', marginTop: 12 }}>
           Strategy: {strategy || 'none'} · {backends.length} total
         </div>
       </div>

@@ -111,3 +111,12 @@ export async function diffFiles(a: string, b: string): Promise<{ file_a: string;
 
 interface FileEntry { name: string; path: string; is_dir: boolean; size: number; mod_time: string }
 interface DiffLine { type: 'same' | 'add' | 'remove'; content: string; line_a?: number; line_b?: number }
+
+// Model capabilities (auto-discovery)
+export async function getCapabilities(): Promise<{ capabilities: import('./types').CapabilityInfo[] }> {
+  return req('/capabilities');
+}
+
+export async function getBackendModels(): Promise<{ backends: import('./types').BackendStatus[] }> {
+  return req('/backends/models');
+}

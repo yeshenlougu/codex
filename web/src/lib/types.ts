@@ -32,9 +32,14 @@ export interface WSMessage {
 }
 
 // Backend pool types
+export interface ModelInfo {
+  name: string;
+  type: string;
+  auto: boolean;
+}
+
 export interface BackendStatus {
   label: string;
-  provider: string;
   base_url: string;
   weight: number;
   health: string;
@@ -43,6 +48,17 @@ export interface BackendStatus {
   last_fail: string;
   last_success: string;
   cooldown: string;
+  models: ModelInfo[];
+  models_grouped?: Record<string, ModelInfo[]>;
+}
+
+export interface CapabilityInfo {
+  type: string;
+  label: string;
+  icon: string;
+  desc: string;
+  enabled: boolean;
+  backends?: BackendStatus[];
 }
 export interface BackendPoolStatus {
   backends: BackendStatus[];

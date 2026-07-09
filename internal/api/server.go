@@ -86,6 +86,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/backends", cors(s.handleBackends))
 	mux.HandleFunc("/api/backends/", cors(s.handleBackends))
 
+	// Model capabilities (auto-discovery)
+	mux.HandleFunc("/api/capabilities", cors(s.handleCapabilities))
+	mux.HandleFunc("/api/backends/models", cors(s.handleBackendModels))
+
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
