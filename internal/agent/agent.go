@@ -138,7 +138,10 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 
 	a.AddMessage("user", msg)
 	a.running = true
-	defer a.maybeSave()
+	defer func() {
+		a.running = false
+		a.maybeSave()
+	}()
 
 	for a.turnCount < a.cfg.Agent.MaxTurns && a.running {
 		a.turnCount++
@@ -242,6 +245,9 @@ func (a *Agent) Messages() []provider.Message { return a.messages }
 
 // TurnCount returns how many model calls were made.
 func (a *Agent) TurnCount() int { return a.turnCount }
+
+// IsThinking returns true while the agent is running a turn.
+func (a *Agent) IsThinking() bool { return a.running }
 
 // NewSessionID generates a timestamp-based session ID.
 func NewSessionID() string {

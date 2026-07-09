@@ -71,6 +71,9 @@ func (s *Server) Start() error {
 	// Config
 	mux.HandleFunc("/api/config", cors(s.handleGetConfig))
 
+	// Pet state
+	mux.HandleFunc("/api/pet-state", cors(s.handlePetState))
+
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
