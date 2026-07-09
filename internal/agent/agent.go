@@ -8,6 +8,7 @@ import (
 	"github.com/yeshenlougu/codex/internal/config"
 	"github.com/yeshenlougu/codex/internal/provider"
 	"github.com/yeshenlougu/codex/internal/session"
+	"github.com/yeshenlougu/codex/internal/skill"
 	"github.com/yeshenlougu/codex/internal/tool"
 )
 
@@ -18,6 +19,7 @@ type Agent struct {
 	registry *tool.Registry
 	pool     *provider.KeyPool
 	store    *session.Store
+	skills   *skill.Registry
 
 	// Session state
 	sessionID string
@@ -60,6 +62,16 @@ func New(cfg *config.Config) *Agent {
 // WithStore attaches a session store for auto-save.
 func (a *Agent) WithStore(store *session.Store) *Agent {
 	a.store = store
+	return a
+}
+
+// WithSkills attaches a skill registry and injects skills into system prompt.
+func (a *Agent) WithSkills(skills *skill.Registry) *Agent {
+	a.skills = skills
+	// Inject skills into system prompt
+	if len(a.messages) > 0 && a.messages[0].Role == "system" {
+		a.messages[0].Content += skills.SystemPrompt()
+	}
 	return a
 }
 
@@ -114,7 +126,17 @@ func (a *Agent) AddToolResult(toolCallID, content string) {
 
 // Run executes the think→act→observe loop.
 func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, error) {
-	a.AddMessage("user", userMessage)
+	// Check if user invoked a skill
+	msg := userMessage
+	if a.skills != nil && strings.HasPrefix(strings.TrimSpace(userMessage), "/") {
+		skillName := strings.TrimSpace(userMessage[1:])
+		if s, ok := a.skills.Get(skillName); ok {
+			// Inject skill content as context
+			msg = fmt.Sprintf("Use the following skill instructions:\\n\\n%s\\n\\n---\\n\\nNow help me with this skill.", s.Content)
+		}
+	}
+
+	a.AddMessage("user", msg)
 	a.running = true
 	defer a.maybeSave()
 
