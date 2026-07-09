@@ -171,6 +171,7 @@ func (g *GitTool) Execute(rawArgs string) (*Result, error) {
 	safe := map[string]bool{
 		"status": true, "diff": true, "log": true, "branch": true,
 		"add": true, "commit": true, "checkout": true, "stash": true, "show": true,
+		"worktree": true, "remote": true, "fetch": true, "pull": true, "push": true,
 	}
 	if !safe[args.Command] {
 		return &Result{Success: false, Error: fmt.Sprintf("git %s is not allowed", args.Command)}, nil

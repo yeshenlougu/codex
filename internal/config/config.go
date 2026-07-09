@@ -14,6 +14,10 @@ type Config struct {
 	Tools    ToolsConfig    `yaml:"tools"`
 	Agent    AgentConfig    `yaml:"agent"`
 	Provider ProviderConfig `yaml:"provider"`
+	MCP      MCPConfig      `yaml:"mcp"`
+	Skills   SkillsConfig   `yaml:"skills"`
+	Plugins  PluginsConfig  `yaml:"plugins"`
+	Hooks    HooksConfig    `yaml:"hooks"`
 }
 
 // ModelConfig is the model selection configuration.
@@ -72,6 +76,39 @@ type ModelEntry struct {
 	Name          string `yaml:"name" json:"name"`
 	Type          string `yaml:"type,omitempty" json:"type,omitempty"`
 	ContextLength int    `yaml:"context_length,omitempty" json:"context_length,omitempty"`
+}
+
+// MCPConfig configures Model Context Protocol servers.
+type MCPConfig struct {
+	Servers []MCPServerConfig `yaml:"servers"`
+}
+
+// MCPServerConfig is a single MCP server (stdio transport).
+type MCPServerConfig struct {
+	Name    string   `yaml:"name"`
+	Command string   `yaml:"command"`
+	Args    []string `yaml:"args"`
+	Env     []string `yaml:"env,omitempty"`
+	Enabled bool     `yaml:"enabled"`
+}
+
+// SkillsConfig configures skill directory scanning.
+type SkillsConfig struct {
+	Dirs []string `yaml:"dirs"`
+}
+
+// PluginsConfig configures plugin directory scanning.
+type PluginsConfig struct {
+	Dirs []string `yaml:"dirs"`
+}
+
+// HooksConfig configures lifecycle and tool hooks.
+type HooksConfig struct {
+	PreTool         string `yaml:"pre_tool"`          // runs before each tool execution
+	PostTool        string `yaml:"post_tool"`         // runs after each tool execution
+	OnSessionStart  string `yaml:"on_session_start"`  // runs when a session is created
+	OnSessionEnd    string `yaml:"on_session_end"`    // runs when a session ends
+	PostToolMessage string `yaml:"post_tool_message"` // runs after LLM response tool calls
 }
 
 // DefaultConfig returns a sensible default configuration.

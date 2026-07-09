@@ -1,11 +1,17 @@
 package agent
 
 import (
+	"encoding/json"
 	"fmt"
+	"log"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/yeshenlougu/codex/internal/config"
+	"github.com/yeshenlougu/codex/internal/hook"
+	"github.com/yeshenlougu/codex/internal/mcp"
+	"github.com/yeshenlougu/codex/internal/plugin"
 	"github.com/yeshenlougu/codex/internal/provider"
 	"github.com/yeshenlougu/codex/internal/session"
 	"github.com/yeshenlougu/codex/internal/skill"
@@ -19,6 +25,8 @@ type Agent struct {
 	pool     *provider.Pool // multi-endpoint pool (replaces external cc-switch)
 	store    *session.Store
 	skills   *skill.Registry
+	hooks    *hook.Runner
+	mcpClients []*mcp.MCPClient
 
 	// Session state
 	sessionID string
@@ -27,9 +35,11 @@ type Agent struct {
 	running   bool
 }
 
-// New creates an Agent with all enabled tools and the backend pool.
+// New creates an Agent with all enabled tools, MCP servers, skills, plugins, and hooks.
 func New(cfg *config.Config) *Agent {
 	registry := tool.NewRegistry()
+
+	// ---- Built-in tools ----
 	registry.Register(tool.NewShellTool())
 	registry.Register(tool.NewFileReadTool())
 	registry.Register(tool.NewFileEditTool())
@@ -38,20 +48,128 @@ func New(cfg *config.Config) *Agent {
 	registry.Register(tool.NewLsTool())
 	registry.Register(tool.NewGitTool())
 	registry.Register(tool.NewWebFetchTool())
+	registry.Register(tool.NewGitWorktreeTool())
 
-	// Build backend pool (cc-switch replacement)
+	// ---- Plugin tools (.plugin.json files) ----
+	for _, dir := range cfg.Plugins.Dirs {
+		dir = expandHome(dir)
+		pluginTools, err := plugin.LoadDir(dir)
+		if err != nil {
+			log.Printf("[agent] plugin load %s: %v", dir, err)
+			continue
+		}
+		for _, pt := range pluginTools {
+			registry.Register(pt)
+			log.Printf("[agent] plugin loaded: %s", pt.Name())
+		}
+	}
+
+	// ---- MCP servers ----
+	var mcpClients []*mcp.MCPClient
+	for _, srv := range cfg.MCP.Servers {
+		if !srv.Enabled {
+			continue
+		}
+		client, err := mcp.NewMCPClient(srv.Command, srv.Args...)
+		if err != nil {
+			log.Printf("[agent] MCP server %s (%s): %v", srv.Name, srv.Command, err)
+			continue
+		}
+		mcpClients = append(mcpClients, client)
+		// Register each MCP tool as a wrapped tool
+		for _, t := range client.Tools {
+			wrapped := newMCPToolWrapper(client, t)
+			registry.Register(wrapped)
+			log.Printf("[agent] MCP tool loaded: %s (from %s)", t.Name, srv.Name)
+		}
+	}
+
+	// ---- Skill registry ----
+	skills := skill.NewRegistry()
+	for _, dir := range cfg.Skills.Dirs {
+		dir = expandHome(dir)
+		skills.AddDir(dir)
+	}
+	if err := skills.LoadAll(); err != nil {
+		log.Printf("[agent] skill load: %v", err)
+	}
+
+	// ---- Hook runner ----
+	hookRunner := hook.NewRunner(
+		expandHome(cfg.Hooks.PreTool),
+		expandHome(cfg.Hooks.PostTool),
+		expandHome(cfg.Hooks.OnSessionStart),
+		expandHome(cfg.Hooks.OnSessionEnd),
+		expandHome(cfg.Hooks.PostToolMessage),
+	)
+
+	// ---- Backend pool ----
 	pool := buildPool(cfg)
-
-	// Start periodic health checks on unhealthy backends
 	pool.StartHealthCheck()
 
+	// ---- System prompt with skills ----
+	systemPrompt := cfg.Agent.SystemPrompt + skills.SystemPrompt()
+
 	return &Agent{
-		cfg:      cfg,
-		registry: registry,
-		pool:     pool,
+		cfg:        cfg,
+		registry:   registry,
+		pool:       pool,
+		hooks:      hookRunner,
+		skills:     skills,
+		mcpClients: mcpClients,
 		messages: []provider.Message{
-			{Role: "system", Content: cfg.Agent.SystemPrompt},
+			{Role: "system", Content: systemPrompt},
 		},
+	}
+}
+
+// expandHome replaces ~ with the user's home directory.
+func expandHome(path string) string {
+	if strings.HasPrefix(path, "~/") {
+		home, err := os.UserHomeDir()
+		if err == nil {
+			return home + path[1:]
+		}
+	}
+	return path
+}
+
+// mcpToolWrapper wraps an MCP ToolDescription to implement the tool.Tool interface.
+type mcpToolWrapper struct {
+	client *mcp.MCPClient
+	desc   mcp.ToolDescription
+}
+
+func newMCPToolWrapper(client *mcp.MCPClient, desc mcp.ToolDescription) *mcpToolWrapper {
+	return &mcpToolWrapper{client: client, desc: desc}
+}
+
+func (w *mcpToolWrapper) Name() string        { return w.desc.Name }
+func (w *mcpToolWrapper) Description() string  { return w.desc.Description }
+func (w *mcpToolWrapper) Schema() map[string]any {
+	if w.desc.InputSchema != nil {
+		return w.desc.InputSchema
+	}
+	return map[string]any{"type": "object", "properties": map[string]any{}}
+}
+func (w *mcpToolWrapper) Execute(rawArgs string) (*tool.Result, error) {
+	var args map[string]any
+	if rawArgs != "" {
+		if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
+			return &tool.Result{Success: false, Error: "invalid mcp args: " + err.Error()}, nil
+		}
+	}
+	output, err := w.client.CallTool(w.desc.Name, args)
+	if err != nil {
+		return &tool.Result{Success: false, Error: err.Error(), Output: output}, nil
+	}
+	return &tool.Result{Success: true, Output: output}, nil
+}
+
+// Close shuts down MCP clients.
+func (a *Agent) Close() {
+	for _, c := range a.mcpClients {
+		c.Close()
 	}
 }
 
@@ -139,6 +257,11 @@ func (a *Agent) LoadSession(id string) error {
 // SetSessionID sets the current session ID (for new sessions).
 func (a *Agent) SetSessionID(id string) {
 	a.sessionID = id
+	// Fire session-start hook
+	wd, _ := os.Getwd()
+	if err := a.hooks.RunOnSessionStart(id, wd); err != nil {
+		log.Printf("[agent] session-start hook: %v", err)
+	}
 }
 
 // SessionID returns the current session ID.
@@ -221,6 +344,17 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 		})
 
 		for _, tc := range result.toolCalls {
+			// Pre-tool hook
+			if err := a.hooks.RunPreTool(hook.Context{
+				SessionID: a.sessionID,
+				ToolName:  tc.Function.Name,
+				ToolArgs:  tc.Function.Arguments,
+			}); err != nil {
+				log.Printf("[agent] pre-tool hook blocked %s: %v", tc.Function.Name, err)
+				a.AddToolResult(tc.ID, fmt.Sprintf("Tool execution blocked by pre-tool hook: %v", err))
+				continue
+			}
+
 			execResult, execErr := a.registry.Execute(tc.Function.Name, tc.Function.Arguments)
 			if execErr != nil {
 				return "", fmt.Errorf("tool execution failed (%s): %w", tc.Function.Name, execErr)
@@ -229,6 +363,22 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 			if !execResult.Success {
 				resultText = fmt.Sprintf("Error: %s\nOutput: %s", execResult.Error, execResult.Output)
 			}
+
+			// Post-tool hook
+			postOutput, postErr := a.hooks.RunPostTool(hook.Context{
+				SessionID:  a.sessionID,
+				ToolName:   tc.Function.Name,
+				ToolArgs:   tc.Function.Arguments,
+				ToolOutput: resultText,
+				ToolError:  execResult.Error,
+			})
+			if postErr != nil {
+				log.Printf("[agent] post-tool hook: %v", postErr)
+			}
+			if postOutput != "" {
+				resultText = postOutput + "\n" + resultText
+			}
+
 			a.AddToolResult(tc.ID, resultText)
 		}
 	}
