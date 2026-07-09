@@ -141,6 +141,30 @@ test:
 	@cd $(WEB_DIR) && npx tsc --noEmit
 	@echo "✅ All checks passed"
 
+# Go unit tests (standalone)
+test-unit:
+	@echo "🧪 Running Go unit tests..."
+	@go test ./internal/... -v -count=1
+	@echo "✅ Go unit tests passed"
+
+# Playwright E2E tests (requires running server at :9787)
+test-e2e:
+	@echo "🎭 Running Playwright E2E tests..."
+	@cd $(WEB_DIR) && npx playwright test --project=chromium
+	@echo "✅ E2E tests passed"
+
+# Full test suite: unit + e2e (start/stop server automatically)
+test-all: test-unit
+	@echo "🚀 Starting server for E2E tests..."
+	@./dist/cli/codex-go --serve --addr :9787 &>/tmp/codex-test-server.log & \
+	SERVER_PID=$$!; \
+	sleep 2; \
+	curl -s -o /dev/null -w '' http://localhost:9787/health || { echo "❌ Server failed to start"; kill $$SERVER_PID; exit 1; }; \
+	$(MAKE) test-e2e; \
+	EC=$$?; \
+	kill $$SERVER_PID 2>/dev/null; \
+	exit $$EC
+
 # Quick dev targets
 dev-cli:
 	@go run ./cmd/codex/
