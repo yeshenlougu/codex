@@ -1,13 +1,57 @@
 {
   "name": "codex-desktop",
   "version": "1.0.0",
-  "description": "Codex Go Desktop - AI Coding Agent with Desktop Pet",
+  "description": "Codex Go - AI Coding Agent with Desktop Pet",
   "main": "main.js",
+  "author": "yeshenlougu",
+  "license": "MIT",
   "scripts": {
     "start": "electron .",
-    "dev": "electron . --dev"
+    "dev": "electron . --dev",
+    "build": "electron-builder",
+    "pack": "electron-builder --dir"
   },
   "dependencies": {
     "electron": "^33.0.0"
+  },
+  "devDependencies": {
+    "electron-builder": "^25.0.0"
+  },
+  "build": {
+    "appId": "com.codex-go.desktop",
+    "productName": "Codex Go",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "main.js",
+      "pet.html",
+      "assets/**",
+      "../web-dist/**"
+    ],
+    "extraResources": [
+      {
+        "from": "../codex-go",
+        "to": "backend/codex-go"
+      }
+    ],
+    "mac": {
+      "category": "public.app-category.developer-tools",
+      "target": ["dmg", "zip"],
+      "icon": "assets/icon.icns"
+    },
+    "win": {
+      "target": ["nsis", "zip"],
+      "icon": "assets/icon.ico"
+    },
+    "linux": {
+      "target": ["AppImage", "deb", "tar.gz"],
+      "category": "Development",
+      "icon": "assets/icon.png"
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true
+    }
   }
 }

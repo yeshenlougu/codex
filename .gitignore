@@ -1,5 +1,5 @@
 # Binaries
-codex
+/codex
 *.exe
 *.test
 *.out
@@ -28,3 +28,7 @@ web/dist/
 
 # Desktop (Electron)
 desktop/node_modules/
+desktop/release/
+
+# Build output
+dist/
