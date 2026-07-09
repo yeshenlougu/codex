@@ -54,6 +54,15 @@ func (a *Agent) AddMessage(role, content string) {
 	a.messages = append(a.messages, provider.Message{Role: role, Content: content})
 }
 
+// AddToolResult appends a tool result message with the tool_call_id.
+func (a *Agent) AddToolResult(toolCallID, content string) {
+	a.messages = append(a.messages, provider.Message{
+		Role:       "tool",
+		Content:    content,
+		ToolCallID: toolCallID,
+	})
+}
+
 // Run starts the agent with an initial user message.
 // It runs the think→act→observe loop until the model responds without tool calls
 // or the maximum number of turns is reached.
@@ -112,7 +121,13 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 
 		// Model requested tool calls — execute them
 		content := fullContent.String()
-		a.AddMessage("assistant", content) // May be empty if only tool calls
+
+		// Store assistant message with tool calls for proper API format
+		a.messages = append(a.messages, provider.Message{
+			Role:      "assistant",
+			Content:   content,
+			ToolCalls: toolCalls,
+		})
 
 		for _, tc := range toolCalls {
 			result, execErr := a.registry.Execute(tc.Function.Name, tc.Function.Arguments)
@@ -126,7 +141,7 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 				resultText = fmt.Sprintf("Error: %s\nOutput: %s", result.Error, result.Output)
 			}
 
-			a.AddMessage("tool", resultText)
+			a.AddToolResult(tc.ID, resultText)
 		}
 	}
 
