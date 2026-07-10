@@ -27,14 +27,10 @@ const categories: Category[] = [
   },
 ];
 
-export default function SettingsPage() {
+export default function SettingsPage({ onBack }: { onBack?: () => void }) {
   const [sub, setSub] = useState<SubPage>('general');
   const [search, setSearch] = useState('');
 
-  // Flatten all items for the menu
-  const allItems = categories.flatMap(c => c.items);
-
-  // Filter by search
   const visibleCategories = useMemo(() => {
     if (!search.trim()) return categories;
     const q = search.toLowerCase();
@@ -46,13 +42,17 @@ export default function SettingsPage() {
 
   return (
     <Layout style={{ height: '100%', background: 'transparent' }}>
-      {/* Sidebar */}
       <Sider width={220} style={{
         background: 'var(--bg-panel)', borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
-        {/* Search */}
         <div style={{ padding: '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+          {onBack && (
+            <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}
+              style={{ alignSelf: 'flex-start', padding: '0 8px', fontSize: 12 }}>
+              返回
+            </Button>
+          )}
           <Input
             prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
             placeholder="搜索设置..."
@@ -63,7 +63,6 @@ export default function SettingsPage() {
           />
         </div>
 
-        {/* Navigation groups */}
         <div style={{ flex: 1, overflowY: 'auto', padding: '4px 0' }}>
           {visibleCategories.map(cat => (
             <div key={cat.label} style={{ marginBottom: 4 }}>
@@ -95,7 +94,6 @@ export default function SettingsPage() {
         </div>
       </Sider>
 
-      {/* Content */}
       <Content style={{ overflow: 'auto', padding: 24, background: 'var(--bg-root)' }}>
         <div style={{ maxWidth: 640 }}>
           {sub === 'general' && <AgentSettings />}

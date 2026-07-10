@@ -16,7 +16,8 @@ function AppContent() {
   const { theme: currentTheme } = useTheme();
   const [page, setPage] = useState<Page>('chat');
   const [rightTab, setRightTab] = useState<RightTab>('files');
-  const [rightOpen, setRightOpen] = useState(false);
+  const [rightOpen, setRightOpen] = useState(true);
+  const [leftOpen, setLeftOpen] = useState(true);
   const [sessionId, setSessionId] = useState(() => {
     const n = new Date(); const p = (x: number) => String(x).padStart(2, '0');
     return `${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
@@ -41,6 +42,9 @@ function AppContent() {
     setPage('chat');
   }, []);
 
+  // Settings/plugins/scheduled pages: hide main sidebars, use internal nav
+  const isFullPage = page !== 'chat';
+
   return (
     <ConfigProvider
       theme={{
@@ -53,28 +57,37 @@ function AppContent() {
       }}
     >
     <div className="app-root">
-      <TitleBar rightPanelOpen={rightOpen} onToggleRight={() => setRightOpen(v => !v)} />
+      <TitleBar
+        leftOpen={leftOpen}
+        rightPanelOpen={rightOpen}
+        onToggleLeft={() => setLeftOpen(v => !v)}
+        onToggleRight={() => setRightOpen(v => !v)}
+      />
       <div className="app-body">
-        <LeftSidebar
-          page={page}
-          sessionId={sessionId}
-          workspace={workspace}
-          projects={projects}
-          onNavigate={setPage}
-          onResumeSession={resumeSession}
-          onNewSession={newSession}
-          onWorkspaceChange={setWorkspace}
-          onProjectAdd={addProject}
-        />
+        {/* Left sidebar: hidden on full pages (settings/plugins/scheduled) */}
+        {!isFullPage && leftOpen && (
+          <LeftSidebar
+            page={page}
+            sessionId={sessionId}
+            workspace={workspace}
+            projects={projects}
+            onNavigate={setPage}
+            onResumeSession={resumeSession}
+            onNewSession={newSession}
+            onWorkspaceChange={setWorkspace}
+            onProjectAdd={addProject}
+          />
+        )}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           {page === 'chat' && (
             <ChatPage sessionId={sessionId} workspace={workspace} />
           )}
-          {page === 'settings' && <SettingsPage />}
+          {page === 'settings' && <SettingsPage onBack={() => setPage('chat')} />}
           {page === 'scheduled' && <ScheduledPage />}
           {page === 'plugins' && <PluginsPage />}
         </div>
-        {rightOpen && (
+        {/* Right panel: hidden on full pages */}
+        {!isFullPage && rightOpen && (
           <RightPanel tab={rightTab} onTabChange={setRightTab} onClose={() => setRightOpen(false)} />
         )}
       </div>
