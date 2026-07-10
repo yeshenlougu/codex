@@ -7,7 +7,7 @@ interface ThemeContextValue {
   toggle: () => void;
 }
 
-const ThemeContext = createContext<ThemeContextValue>({ theme: 'dark', toggle: () => {} });
+const ThemeContext = createContext<ThemeContextValue>({ theme: 'light', toggle: () => {} });
 
 const STORAGE_KEY = 'codex-theme';
 
@@ -15,7 +15,7 @@ function getSystemTheme(): Theme {
   if (typeof window !== 'undefined' && window.matchMedia('(prefers-color-scheme: light)').matches) {
     return 'light';
   }
-  return 'dark';
+  return 'light';  // default to light
 }
 
 function getStoredTheme(): Theme {

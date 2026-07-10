@@ -85,7 +85,7 @@ function createMainWindow() {
     title: 'Codex Go',
     frame: false,
     titleBarStyle: 'hidden',
-    backgroundColor: '#0c0c0d',
+    backgroundColor: '#ffffff',
     webPreferences: { nodeIntegration: false, contextIsolation: true, preload: path.join(__dirname, 'preload.js') },
     show: false,
   });
