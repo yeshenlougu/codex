@@ -1,5 +1,6 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { streamMessage, getConfig, listAgents } from '../lib/api';
+import { streamMessage, getConfig, listAgents, getTasks, implementTask } from '../lib/api';
+import type { Task } from '../lib/api';
 import type { AgentProfile } from '../lib/types';
 
 interface Props {
@@ -29,6 +30,48 @@ export default function ChatPage({ sessionId, workspace }: Props) {
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || sending) return;
+
+    // ---- Slash command detection ----
+    if (text.startsWith('/tasks')) {
+      setSending(true);
+      setInput('');
+      setMessages((prev) => [...prev, { role: 'user', content: text }]);
+      try {
+        const res = await getTasks();
+        setMessages((prev) => [...prev, { role: 'assistant', content: res.content || 'No tasks found.' }]);
+      } catch (err: any) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err.message}` }]);
+      }
+      setSending(false);
+      return;
+    }
+
+    if (text.startsWith('/implement')) {
+      const match = text.match(/^\/implement\s+(\d+)/);
+      if (!match) {
+        setInput('');
+        setMessages((prev) => [
+          ...prev,
+          { role: 'user', content: text },
+          { role: 'assistant', content: 'Usage: /implement <task-number>\nExample: /implement 3' },
+        ]);
+        return;
+      }
+      const taskNum = parseInt(match[1], 10);
+      setSending(true);
+      setInput('');
+      setMessages((prev) => [...prev, { role: 'user', content: text }]);
+      try {
+        const res = await implementTask(taskNum);
+        setMessages((prev) => [...prev, { role: 'assistant', content: res.content }]);
+      } catch (err: any) {
+        setMessages((prev) => [...prev, { role: 'assistant', content: `Error: ${err.message}` }]);
+      }
+      setSending(false);
+      return;
+    }
+
+    // /spec and /plan go to chat (backend intercepts them)
     setInput('');
     setSending(true);
     const fileMatches = text.match(/[\w./-]+\.\w{1,6}/g) || [];
@@ -90,11 +133,14 @@ export default function ChatPage({ sessionId, workspace }: Props) {
             <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 8 }}>
               💡 Use <code>@agent-name</code> in your message to invoke a specific agent.
             </p>
+            <p style={{ fontSize: '0.75rem', color: 'var(--text-secondary)', marginTop: 4 }}>
+              📋 Slash commands: <code>/spec</code> <code>/plan</code> <code>/tasks</code> <code>/implement</code>
+            </p>
             <div className="chat-empty-hints">
-              <span onClick={() => setInput('Explain this code')}>Explain this code</span>
-              <span onClick={() => setInput('Write a function that')}>Write a function</span>
-              <span onClick={() => setInput('Debug this error:')}>Debug an error</span>
-              <span onClick={() => setInput('Refactor this module')}>Refactor module</span>
+              <span onClick={() => setInput('/spec Add dark mode support')}>📝 /spec new feature</span>
+              <span onClick={() => setInput('/plan')}>📋 /plan from spec</span>
+              <span onClick={() => setInput('/tasks')}>✅ /tasks view</span>
+              <span onClick={() => setInput('/implement 1')}>✔️ /implement task</span>
             </div>
           </div>
         ) : (

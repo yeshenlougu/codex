@@ -8,11 +8,9 @@ import (
 	"os"
 	"os/signal"
 	"path/filepath"
-	"strconv"
 	"strings"
 	"syscall"
 	"time"
-	"unicode"
 
 	"gopkg.in/yaml.v3"
 
@@ -23,6 +21,7 @@ import (
 	"github.com/yeshenlougu/codex/internal/logger"
 	"github.com/yeshenlougu/codex/internal/session"
 	"github.com/yeshenlougu/codex/internal/skill"
+	"github.com/yeshenlougu/codex/internal/workflow"
 )
 
 // Build info (injected by Makefile via -ldflags)
@@ -454,68 +453,7 @@ func runInteractive(ag *agent.Agent) {
 }
 
 // ---- spec / plan / tasks / implement handlers ----
-
-const specPromptTemplate = `You are writing a technical specification document. Generate a SPEC document based on this description:
-
-%s
-
-Write the complete specification document to %s using the write_file tool.
-
-The specification must follow this format in Chinese:
-
-# <Feature Name>
-
-## 1. 背景与动机
-Why this feature is needed. What problem it solves.
-
-## 2. 目标
-Clear, measurable goals.
-
-## 3. 设计方案
-### 3.1 架构
-High-level architecture. Data flow. Component diagram described in text.
-
-### 3.2 数据结构
-Key data structures, API shapes, config schemas. Use code blocks.
-
-### 3.3 流程
-Key workflows as step-by-step sequences.
-
-## 4. 影响分析
-What existing systems are affected. Migration path if any. Breaking changes.
-
-## 5. 实施路线
-### Phase 1: ...
-### Phase 2: ...
-### Phase 3: ...
-
-Be thorough but concise. Every section should have substance, not placeholder text.`
-
-const planPromptTemplate = `You are writing an implementation plan. Read the specification file %s (use read_file tool), then generate a detailed implementation plan.
-
-Write the plan to PLAN.md using the write_file tool.
-
-The plan must follow this format in Chinese:
-
-# Implementation Plan for <Feature>
-
-## Phase 1: <Phase Name>
-- [ ] Task 1.1: <task description> — 预计 <N>天
-- [ ] Task 1.2: <task description> — 预计 <N>天
-
-## Phase 2: <Phase Name>
-- [ ] Task 2.1: <task description> — 预计 <N>天
-...
-
-## 验收标准
-- [ ] 标准 1
-- [ ] 标准 2
-
-Guidelines:
-- Each phase should be independently shippable
-- Tasks should be small enough to complete in 0.5-2 days
-- Include testing, documentation, and code review as tasks where appropriate
-- Acceptance criteria should be verifiable and concrete`
+// All prompt templates and task logic are sourced from internal/workflow.
 
 func handleSpecCommand(ag *agent.Agent, input string) {
 	desc := strings.TrimSpace(strings.TrimPrefix(input, "/spec"))
@@ -525,8 +463,8 @@ func handleSpecCommand(ag *agent.Agent, input string) {
 		return
 	}
 
-	filename := fmt.Sprintf("SPEC-%s.md", slugify(desc))
-	prompt := fmt.Sprintf(specPromptTemplate, desc, filename)
+	filename := workflow.SpecFilename(desc)
+	prompt := fmt.Sprintf(workflow.SpecPromptTemplate, desc, filename)
 
 	fmt.Printf("\n📝 Generating spec → %s ...\n\n", filename)
 	_, err := ag.Run(prompt, func(chunk string) {
@@ -546,7 +484,7 @@ func handlePlanCommand(ag *agent.Agent, input string) {
 		specFile = "SPEC.md"
 	}
 
-	prompt := fmt.Sprintf(planPromptTemplate, specFile)
+	prompt := fmt.Sprintf(workflow.PlanPromptTemplate, specFile)
 
 	fmt.Printf("\n📋 Generating plan from %s → PLAN.md ...\n\n", specFile)
 	_, err := ag.Run(prompt, func(chunk string) {
@@ -561,30 +499,27 @@ func handlePlanCommand(ag *agent.Agent, input string) {
 }
 
 func handleTasksCommand() {
-	data, err := os.ReadFile("PLAN.md")
+	tl, err := workflow.ParseTasks("PLAN.md")
 	if err != nil {
 		fmt.Println("No PLAN.md found in current directory. Use /plan to generate one.")
 		return
 	}
 
 	fmt.Println()
-	taskNum := 0
-	scanner := bufio.NewScanner(strings.NewReader(string(data)))
-	for scanner.Scan() {
-		line := scanner.Text()
-		trimmed := strings.TrimSpace(line)
-		switch {
-		case strings.HasPrefix(trimmed, "## ") || strings.HasPrefix(trimmed, "### "):
-			fmt.Printf("\n%s\n", trimmed)
-		case strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]"):
-			taskNum++
-			desc := strings.TrimPrefix(strings.TrimPrefix(trimmed, "- [x] "), "- [X] ")
-			fmt.Printf("  %d. ✅ %s\n", taskNum, desc)
-		case strings.HasPrefix(trimmed, "- [ ]"):
-			taskNum++
-			desc := strings.TrimPrefix(trimmed, "- [ ] ")
-			fmt.Printf("  %d. ⬜ %s\n", taskNum, desc)
+	lastPhase := ""
+	for _, t := range tl.Tasks {
+		if t.Phase != "" && t.Phase != lastPhase {
+			if lastPhase != "" {
+				fmt.Println()
+			}
+			fmt.Println(t.Phase)
+			lastPhase = t.Phase
 		}
+		icon := "⬜"
+		if t.Completed {
+			icon = "✅"
+		}
+		fmt.Printf("  %d. %s %s\n", t.Number, icon, t.Content)
 	}
 	fmt.Println()
 }
@@ -597,99 +532,22 @@ func handleImplementCommand(input string) {
 		return
 	}
 
-	data, err := os.ReadFile("PLAN.md")
+	taskNum := 0
+	fmt.Sscanf(taskID, "%d", &taskNum)
+	if taskNum <= 0 {
+		fmt.Printf("Invalid task number: %s\n", taskID)
+		return
+	}
+
+	content, err := workflow.MarkTaskAsDone("PLAN.md", taskNum)
 	if err != nil {
-		fmt.Println("No PLAN.md found in current directory.")
+		fmt.Println(err.Error())
 		return
 	}
-
-	lines := strings.Split(string(data), "\n")
-	taskIdx := 0
-	found := false
-	for i, line := range lines {
-		trimmed := strings.TrimSpace(line)
-		if strings.HasPrefix(trimmed, "- [ ]") || strings.HasPrefix(trimmed, "- [x]") || strings.HasPrefix(trimmed, "- [X]") {
-			taskIdx++
-			target := strconv.Itoa(taskIdx)
-			if target == taskID {
-				if strings.Contains(line, "[x]") || strings.Contains(line, "[X]") {
-					fmt.Printf("Task %s is already completed.\n", taskID)
-					return
-				}
-				lines[i] = strings.Replace(line, "- [ ]", "- [x]", 1)
-				found = true
-				break
-			}
-		}
-	}
-
-	if !found {
-		fmt.Printf("Task %s not found in PLAN.md (total: %d tasks)\n", taskID, taskIdx)
-		return
-	}
-
-	if err := os.WriteFile("PLAN.md", []byte(strings.Join(lines, "\n")), 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error writing PLAN.md: %v\n", err)
-		return
-	}
-	fmt.Printf("✅ Task %s marked as completed in PLAN.md\n", taskID)
-}
-
-// slugify converts Chinese/English description to a filename-safe slug.
-func slugify(s string) string {
-	// Take first 30 chars, keep letters/digits, replace spaces with dash
-	var b strings.Builder
-	runes := []rune(s)
-	maxLen := 30
-	if len(runes) < maxLen {
-		maxLen = len(runes)
-	}
-	for i := 0; i < maxLen; i++ {
-		r := runes[i]
-		if unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' || r == '-' {
-			b.WriteRune(r)
-		} else if unicode.IsSpace(r) || r == ',' || r == '、' {
-			b.WriteRune('-')
-		}
-		// Other characters (Chinese, etc.) are skipped
-	}
-	result := strings.Trim(b.String(), "-")
-	if result == "" {
-		result = "feature"
-	}
-	return strings.ToLower(result)
+	fmt.Printf("✅ Task %d marked as done: %s\n", taskNum, content)
 }
 
 // ---- CLI subcommand handlers (spec / plan) ----
-
-const specTemplate = `# %s
-
-## 1. 背景与动机
-<!-- 描述为什么需要这个功能，它解决什么问题 -->
-
-## 2. 目标
-<!-- 可衡量的目标 -->
-
-## 3. 设计方案
-### 3.1 架构
-<!-- 高层架构、数据流、组件关系 -->
-
-### 3.2 数据结构
-<!-- 关键数据结构、API 形态、配置 schema -->
-
-### 3.3 流程
-<!-- 核心工作流的步骤序列 -->
-
-## 4. 影响分析
-<!-- 影响哪些现有系统、迁移路径、破坏性变更 -->
-
-## 5. 实施路线
-### Phase 1: <!-- 名称 -->
-<!-- 描述 -->
-
-### Phase 2: <!-- 名称 -->
-<!-- 描述 -->
-`
 
 func handleSpecCLI(args []string) {
 	if len(args) == 0 {
@@ -705,12 +563,12 @@ func handleSpecCLI(args []string) {
 		if len(args) > 1 {
 			name = args[1]
 		}
-		filename := fmt.Sprintf("SPEC-%s.md", slugify(name))
+		filename := workflow.SpecFilename(name)
 		if _, err := os.Stat(filename); err == nil {
 			fmt.Fprintf(os.Stderr, "Error: %s already exists.\n", filename)
 			os.Exit(1)
 		}
-		content := fmt.Sprintf(specTemplate, name)
+		content := fmt.Sprintf(workflow.SpecFileTemplate, name)
 		if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: %v\n", err)
 			os.Exit(1)
@@ -760,7 +618,7 @@ func handlePlanCLI(cfg *config.Config, args []string) {
 			os.Exit(1)
 		}
 		ag := agent.New(cfg)
-		prompt := fmt.Sprintf(planPromptTemplate, specFile)
+		prompt := fmt.Sprintf(workflow.PlanPromptTemplate, specFile)
 		fmt.Printf("📋 Generating plan from %s → PLAN.md ...\n", specFile)
 		result, err := ag.Run(prompt, func(chunk string) {
 			fmt.Print(chunk)

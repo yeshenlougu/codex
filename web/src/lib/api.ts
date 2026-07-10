@@ -148,7 +148,22 @@ export async function cloneAgent(sourceName: string, newName: string): Promise<i
   return req(`/agents/${encodeURIComponent(sourceName)}/clone`, { method: 'POST', body: JSON.stringify({ name: newName }) });
 }
 
-// === Session Agent Management ===
+// === Spec/Plan/Tasks Workflow ===
+
+export interface Task {
+  number: number;
+  content: string;
+  completed: boolean;
+  phase: string;
+}
+
+export async function getTasks(): Promise<{ content: string; tasks: Task[] }> {
+  return req('/tasks');
+}
+
+export async function implementTask(taskNum: number): Promise<{ content: string }> {
+  return req(`/implement/${taskNum}`, { method: 'POST' });
+}
 
 export async function addAgentToSession(sessionId: string, agentName: string): Promise<{ session_id: string; agent: string; status: string }> {
   return req(`/sessions/${encodeURIComponent(sessionId)}/agents`, { method: 'POST', body: JSON.stringify({ agent_name: agentName }) });
