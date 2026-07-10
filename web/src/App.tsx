@@ -5,15 +5,18 @@ import TitleBar from './components/TitleBar';
 import LeftSidebar from './components/LeftSidebar';
 import ChatPage from './pages/ChatPage';
 import SettingsPage from './pages/SettingsPage';
+import ScheduledPage from './pages/ScheduledPage';
+import PluginsPage from './pages/PluginsPage';
 import RightPanel from './components/RightPanel';
 
-export type Page = 'chat' | 'settings';
-export type RightTab = 'files' | 'changes' | 'git';
+export type Page = 'chat' | 'settings' | 'scheduled' | 'plugins';
+export type RightTab = 'review' | 'terminal' | 'browser' | 'files' | 'sidetasks';
 
 function AppContent() {
   const { theme: currentTheme } = useTheme();
   const [page, setPage] = useState<Page>('chat');
   const [rightTab, setRightTab] = useState<RightTab>('files');
+  const [rightOpen, setRightOpen] = useState(false);
   const [sessionId, setSessionId] = useState(() => {
     const n = new Date(); const p = (x: number) => String(x).padStart(2, '0');
     return `${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`;
@@ -50,7 +53,7 @@ function AppContent() {
       }}
     >
     <div className="app-root">
-      <TitleBar />
+      <TitleBar rightPanelOpen={rightOpen} onToggleRight={() => setRightOpen(v => !v)} />
       <div className="app-body">
         <LeftSidebar
           page={page}
@@ -68,8 +71,12 @@ function AppContent() {
             <ChatPage sessionId={sessionId} workspace={workspace} />
           )}
           {page === 'settings' && <SettingsPage />}
+          {page === 'scheduled' && <ScheduledPage />}
+          {page === 'plugins' && <PluginsPage />}
         </div>
-        <RightPanel tab={rightTab} onTabChange={setRightTab} />
+        {rightOpen && (
+          <RightPanel tab={rightTab} onTabChange={setRightTab} onClose={() => setRightOpen(false)} />
+        )}
       </div>
       <div className="statusbar">
         <span>Codex Go v1.0.0</span>

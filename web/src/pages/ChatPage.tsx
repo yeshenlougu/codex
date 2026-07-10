@@ -1,8 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Card, Input, Button, Select, Tag, Empty, Row, Col, Typography } from 'antd';
+import { Card, Input, Button, Select, Tag, Row, Col, Typography, Tooltip } from 'antd';
 import {
   SendOutlined, SearchOutlined, ToolOutlined, BugOutlined, AuditOutlined,
-  FileTextOutlined, FolderOutlined,
+  FileTextOutlined, StopOutlined, FolderOpenOutlined, FolderOutlined,
+  SafetyOutlined,
 } from '@ant-design/icons';
 import { streamMessage, getConfig, listAgents, getTasks, implementTask } from '../lib/api';
 import type { AgentProfile } from '../lib/types';
@@ -26,13 +27,26 @@ export default function ChatPage({ sessionId, workspace }: Props) {
   const [model, setModel] = useState('gpt-4');
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [activeAgent, setActiveAgent] = useState('default');
+  const [progress, setProgress] = useState({ step: 0, total: 0 });
+  const [abortController, setAbortController] = useState<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
+
+  const workspaceName = workspace.split('/').filter(Boolean).pop() || workspace;
 
   useEffect(() => {
     getConfig().then(c => { setProvider(c.provider); setModel(c.model); }).catch(() => {});
     listAgents().then(a => setAgents(a.agents || [])).catch(() => {});
   }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streaming]);
+
+  const stopGeneration = () => {
+    if (abortController) {
+      abortController.abort();
+      setAbortController(null);
+    }
+    setSending(false);
+    setStreaming('');
+  };
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
@@ -59,15 +73,33 @@ export default function ChatPage({ sessionId, workspace }: Props) {
     setInput(''); setSending(true);
     const fileMatches = text.match(/[\w./-]+\.\w{1,6}/g) || [];
     setMessages(prev => [...prev, { role: 'user', content: text, files: fileMatches }]);
+
+    // Simulate progress: 3 steps
+    setProgress({ step: 1, total: 3 });
+    const p1 = setTimeout(() => setProgress({ step: 2, total: 3 }), 800);
+    const p2 = setTimeout(() => setProgress({ step: 3, total: 3 }), 1600);
+
+    const ac = new AbortController();
+    setAbortController(ac);
+
     let fullText = ''; setStreaming('');
     await streamMessage(text, sessionId,
       chunk => { fullText += chunk; setStreaming(fullText); },
       done => {
+        clearTimeout(p1); clearTimeout(p2);
+        setProgress({ step: 0, total: 0 });
         setStreaming('');
+        setAbortController(null);
         setMessages(prev => [...prev, { role: 'assistant', content: done, agent: activeAgent }]);
         setSending(false);
       },
-      err => { setStreaming(''); setSending(false); setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err}`, agent: activeAgent }]); },
+      err => {
+        clearTimeout(p1); clearTimeout(p2);
+        setProgress({ step: 0, total: 0 });
+        setStreaming(''); setSending(false);
+        setAbortController(null);
+        setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err}`, agent: activeAgent }]);
+      },
       activeAgent !== 'default' ? activeAgent : undefined,
     );
   }, [input, sending, sessionId, activeAgent]);
@@ -86,17 +118,47 @@ export default function ChatPage({ sessionId, workspace }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Context bar */}
+      {/* Context bar — Codex style */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 12, padding: '4px 16px',
+        display: 'flex', alignItems: 'center', gap: 10, padding: '4px 16px',
         borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', flexShrink: 0,
+        minHeight: 36,
       }}>
-        <Tag color="green" style={{ margin: 0 }}>{provider} / {model}</Tag>
-        <Text type="secondary" style={{ fontSize: 11 }}>📁 {workspace}</Text>
-        <Text type="secondary" style={{ fontSize: 10, marginLeft: 'auto', fontFamily: 'monospace' }}>#{sessionId.slice(-12)}</Text>
-        <Select size="small" value={activeAgent} onChange={setActiveAgent} style={{ width: 160 }}
+        <FolderOutlined style={{ color: 'var(--accent)', fontSize: 14 }} />
+        <Text style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+          {workspaceName}
+        </Text>
+        <Tooltip title="打开位置">
+          <Button type="text" size="small" icon={<FolderOpenOutlined />}
+            style={{ color: 'var(--text-muted)', fontSize: 13 }} />
+        </Tooltip>
+
+        <div style={{ flex: 1 }} />
+
+        {/* Progress indicator */}
+        {progress.total > 0 && (
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            background: 'var(--bg-active)', padding: '2px 10px', borderRadius: 10,
+            fontSize: 11, color: 'var(--accent)',
+          }}>
+            <div style={{
+              width: 8, height: 8, borderRadius: '50%',
+              background: 'var(--accent)', animation: 'pulse 1.5s infinite',
+            }} />
+            第 {progress.step} / {progress.total} 步
+          </div>
+        )}
+
+        {/* Agent select */}
+        <Select size="small" value={activeAgent} onChange={setActiveAgent} style={{ width: 140 }}
           options={[{ value: 'default', label: '🤖 default' }, ...agents.map(a => ({ value: a.name, label: `${a.avatar || '🤖'} ${a.name}` }))]}
         />
+
+        {/* Model indicator */}
+        <Text type="secondary" style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
+          5.5 高
+        </Text>
       </div>
 
       {/* Messages OR Welcome */}
@@ -111,7 +173,7 @@ export default function ChatPage({ sessionId, workspace }: Props) {
               fontSize: 32,
             }}>🦊</div>
             <Title level={3} style={{ margin: 0, textAlign: 'center', maxWidth: 500 }}>
-              What should we build in <span style={{ color: '#5e6ad2' }}>{workspace}</span>?
+              What should we build in <span style={{ color: '#5e6ad2' }}>{workspaceName}</span>?
             </Title>
             <Text type="secondary" style={{ textAlign: 'center', maxWidth: 440, fontSize: 13 }}>
               💡 Use <code>@agent-name</code> to invoke a specific agent.
@@ -159,7 +221,11 @@ export default function ChatPage({ sessionId, workspace }: Props) {
                   </div>
                   {m.files && m.files.length > 0 && (
                     <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {m.files.map((f, j) => <Tag key={j} icon={<FileTextOutlined />}>{f}</Tag>)}
+                      {m.files.map((f, j) => (
+                        <Tag key={j} icon={<FileTextOutlined />} style={{ borderRadius: 4, fontSize: 10 }}>
+                          {f}
+                        </Tag>
+                      ))}
                     </div>
                   )}
                 </div>
@@ -169,7 +235,9 @@ export default function ChatPage({ sessionId, workspace }: Props) {
               <div style={{ display: 'flex', gap: 10 }}>
                 <div style={{ width: 28, height: 28, borderRadius: 6, display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 14, background: 'var(--bg-elevated)' }}>🤖</div>
                 <div style={{ flex: 1 }}>
-                  <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>Codex <Tag color="processing" style={{ fontSize: 9, marginLeft: 4 }}>Writing...</Tag></Text>
+                  <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, textTransform: 'uppercase' }}>
+                    Codex <Tag color="processing" style={{ fontSize: 9, marginLeft: 4 }}>Writing...</Tag>
+                  </Text>
                   <div style={{ fontSize: 13, lineHeight: 1.65, whiteSpace: 'pre-wrap' }}><Markdown text={streaming} /></div>
                 </div>
               </div>
@@ -179,32 +247,88 @@ export default function ChatPage({ sessionId, workspace }: Props) {
         )}
       </div>
 
-      {/* Input */}
+      {/* Input area — Codex style */}
       <div style={{ padding: '10px 24px 14px', borderTop: '1px solid var(--border)', background: 'var(--bg-root)' }}>
-        <div style={{ maxWidth: 720, margin: '0 auto', display: 'flex', gap: 8, alignItems: 'flex-end' }}>
-          <TextArea
-            value={input}
-            onChange={e => setInput(e.target.value)}
-            onKeyDown={handleKeyDown}
-            placeholder={`Ask ${activeAgent}... (${workspace})`}
-            autoSize={{ minRows: 1, maxRows: 5 }}
-            disabled={sending}
-            style={{ flex: 1 }}
-          />
-          <Button
-            type="primary"
-            icon={<SendOutlined />}
-            onClick={handleSend}
-            disabled={sending || !input.trim()}
-            style={{ height: 40 }}
-          />
+        <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          <div style={{
+            display: 'flex', alignItems: 'flex-end', gap: 8,
+            background: 'var(--bg-panel)', border: '1px solid var(--border)',
+            borderRadius: 10, padding: '6px 8px',
+          }}>
+            {/* Add file / context button */}
+            <Tooltip title="添加上下文">
+              <Button type="text" size="small" icon={<span style={{ fontWeight: 700, fontSize: 16 }}>+</span>}
+                style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            </Tooltip>
+
+            <TextArea
+              value={input}
+              onChange={e => setInput(e.target.value)}
+              onKeyDown={handleKeyDown}
+              placeholder="要求后续变更"
+              autoSize={{ minRows: 1, maxRows: 5 }}
+              disabled={sending}
+              style={{
+                flex: 1, border: 'none', background: 'transparent',
+                resize: 'none', outline: 'none', padding: '4px 0',
+                boxShadow: 'none',
+              }}
+              className="chat-input-textarea"
+            />
+
+            {/* Full access indicator */}
+            {activeAgent !== 'default' && (
+              <Tooltip title="完全访问">
+                <Tag color="orange" style={{ margin: 0, fontSize: 10, lineHeight: '20px', flexShrink: 0 }}>
+                  <SafetyOutlined /> 完全访问
+                </Tag>
+              </Tooltip>
+            )}
+
+            {/* Send / Stop */}
+            {sending ? (
+              <Button
+                type="text"
+                size="small"
+                icon={<StopOutlined />}
+                onClick={stopGeneration}
+                style={{
+                  width: 30, height: 30, borderRadius: 15,
+                  background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
+                  flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                }}
+              />
+            ) : (
+              <Button
+                type="primary"
+                icon={<SendOutlined />}
+                onClick={handleSend}
+                disabled={!input.trim()}
+                style={{
+                  width: 30, height: 30, borderRadius: 15,
+                  flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  padding: 0,
+                }}
+              />
+            )}
+          </div>
         </div>
       </div>
+
+      {/* CSS for pulse animation */}
+      <style>{`
+        @keyframes pulse {
+          0%, 100% { opacity: 1; }
+          50% { opacity: 0.4; }
+        }
+        .chat-input-textarea { box-shadow: none !important; }
+        .chat-input-textarea:focus { box-shadow: none !important; }
+      `}</style>
     </div>
   );
 }
 
-// Simple markdown renderer (code blocks only)
+// Simple markdown renderer (code blocks + file path chips)
 function Markdown({ text }: { text: string }) {
   const blocks = useMemo(() => {
     const parts: { type: 'text' | 'code'; content: string; lang?: string }[] = [];
@@ -219,6 +343,30 @@ function Markdown({ text }: { text: string }) {
     return parts;
   }, [text]);
 
+  // Highlight file paths like F:\...\file.java
+  function renderText(plain: string): React.ReactNode[] {
+    const pathRe = /([A-Z]:\\[\w\-\\]+\.[\w]+)/g;
+    const elements: React.ReactNode[] = [];
+    let lastIdx = 0;
+    let match: RegExpExecArray | null;
+    while ((match = pathRe.exec(plain)) !== null) {
+      if (match.index > lastIdx) elements.push(plain.slice(lastIdx, match.index));
+      elements.push(
+        <Tag key={match.index} style={{
+          background: 'var(--bg-elevated)', border: '1px solid var(--border)',
+          borderRadius: 4, fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
+          padding: '1px 6px', lineHeight: 1.6,
+        }}>
+          <FileTextOutlined style={{ marginRight: 3 }} />
+          {match[1].split('\\').slice(-2).join('\\')}
+        </Tag>
+      );
+      lastIdx = match.index + match[0].length;
+    }
+    if (lastIdx < plain.length) elements.push(plain.slice(lastIdx));
+    return elements;
+  }
+
   return <>
     {blocks.map((b, i) => b.type === 'code' ? (
       <pre key={i} style={{
@@ -229,6 +377,6 @@ function Markdown({ text }: { text: string }) {
         {b.lang && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>{b.lang}</div>}
         <code>{b.content}</code>
       </pre>
-    ) : <span key={i}>{b.content}</span>)}
+    ) : <span key={i}>{renderText(b.content)}</span>)}
   </>;
 }

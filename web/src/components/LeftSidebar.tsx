@@ -1,8 +1,9 @@
-import { useState, useEffect } from 'react';
-import { Layout, Menu, Button, Modal, Input, Space, Typography } from 'antd';
+import { useState, useEffect, useMemo } from 'react';
+import { Layout, Button, Modal, Input, Space, Typography, Tooltip, Dropdown } from 'antd';
 import {
-  MessageOutlined, SettingOutlined, PlusOutlined, FolderOpenOutlined,
-  FolderAddOutlined, DeleteOutlined, HomeOutlined,
+  PlusOutlined, FolderOpenOutlined, FolderAddOutlined, DeleteOutlined,
+  HomeOutlined, EditOutlined, ClockCircleOutlined, AppstoreOutlined,
+  SettingOutlined, QuestionCircleOutlined, DownOutlined, BulbOutlined,
 } from '@ant-design/icons';
 import type { SessionSummary } from '../lib/types';
 import { listSessions, deleteSession, listFiles } from '../lib/api';
@@ -23,6 +24,33 @@ interface Props {
   onProjectAdd: (path: string) => void;
 }
 
+// Project node with optional sub-paths (from workspace path structure)
+interface ProjectNode {
+  name: string;
+  path: string;
+  children: ProjectNode[];
+}
+
+function buildProjectTree(projects: string[]): ProjectNode[] {
+  const root: ProjectNode[] = [];
+  for (const p of projects) {
+    const parts = p.replace(/\\/g, '/').split('/').filter(Boolean);
+    if (parts.length === 0) continue;
+    let level = root;
+    let currentPath = '';
+    for (let i = 0; i < parts.length; i++) {
+      currentPath += (currentPath.endsWith('/') || i === 0 ? '' : '/') + parts[i];
+      let existing = level.find(n => n.name === parts[i]);
+      if (!existing) {
+        existing = { name: parts[i], path: i === parts.length - 1 ? p : currentPath, children: [] };
+        level.push(existing);
+      }
+      level = existing.children;
+    }
+  }
+  return root;
+}
+
 export default function LeftSidebar(props: Props) {
   const { page, sessionId, workspace, projects, onNavigate, onResumeSession, onNewSession, onWorkspaceChange, onProjectAdd } = props;
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
@@ -30,6 +58,7 @@ export default function LeftSidebar(props: Props) {
   const [modalOpen, setModalOpen] = useState(false);
   const [wsPath, setWsPath] = useState('/home/ubuntu');
   const [treeData, setTreeData] = useState<any[]>([]);
+  const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
 
   const load = () => {
     listSessions().then(d => setSessions(d.sessions || [])).catch(() => {}).finally(() => setLoading(false));
@@ -41,19 +70,13 @@ export default function LeftSidebar(props: Props) {
     try { await deleteSession(id); setSessions(s => s.filter(x => x.id !== id)); } catch {}
   };
 
-  // Browse directory
   const browseDir = async (dir: string) => {
     setWsPath(dir);
     try {
       const data = await listFiles(dir);
       const dirs = (data.files || [])
         .filter((f: any) => f.is_dir)
-        .map((f: any) => ({
-          title: f.name,
-          key: f.path,
-          isLeaf: false,
-          icon: <FolderOpenOutlined />,
-        }));
+        .map((f: any) => ({ title: f.name, key: f.path, isLeaf: false, icon: <FolderOpenOutlined /> }));
       setTreeData(dirs);
     } catch { setTreeData([]); }
   };
@@ -70,21 +93,60 @@ export default function LeftSidebar(props: Props) {
     }
   };
 
-  // Build menu items
-  const menuItems = [
-    { key: 'chat', icon: <MessageOutlined />, label: 'Chat' },
+  const toggleProject = (path: string) => {
+    setExpandedProjects(prev => ({ ...prev, [path]: !prev[path] }));
+  };
+
+  // Build project tree
+  const projectTree = useMemo(() => buildProjectTree(projects), [projects]);
+
+  // Get recent tasks (sessions) up to 5
+  const recentTasks = sessions.slice(0, 5);
+
+  const renderProjectNode = (node: ProjectNode, depth: number = 0): React.ReactNode => {
+    const isExpanded = expandedProjects[node.path] !== false; // default expanded
+    const hasChildren = node.children.length > 0;
+    const isActive = workspace === node.path || workspace.startsWith(node.path + '/');
+    
+    return (
+      <div key={node.path}>
+        <div
+          onClick={() => {
+            if (hasChildren) { toggleProject(node.path); }
+            onWorkspaceChange(node.path);
+            onNavigate('chat');
+          }}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 6,
+            padding: '4px 10px', paddingLeft: 10 + depth * 14,
+            borderRadius: 6, cursor: 'pointer', fontSize: 12,
+            margin: '0 4px 1px',
+            background: isActive ? 'var(--bg-active)' : 'transparent',
+            color: isActive ? 'var(--text-primary)' : 'var(--text-secondary)',
+            fontWeight: isActive ? 500 : 400,
+          }}
+        >
+          {hasChildren && (
+            <DownOutlined style={{ fontSize: 8, transform: isExpanded ? 'rotate(0deg)' : 'rotate(-90deg)', transition: '0.15s' }} />
+          )}
+          {!hasChildren && <span style={{ width: 8, flexShrink: 0 }} />}
+          <FolderOpenOutlined style={{ fontSize: 13, opacity: 0.7 }} />
+          <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{node.name}</span>
+        </div>
+        {hasChildren && isExpanded && node.children.map(child => renderProjectNode(child, depth + 1))}
+      </div>
+    );
+  };
+
+  // Nav items matching Codex
+  const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
+    { key: 'chat', label: '新建任务', icon: <EditOutlined /> },
+    { key: 'scheduled', label: '已安排', icon: <ClockCircleOutlined /> },
+    { key: 'plugins', label: '插件', icon: <AppstoreOutlined /> },
   ];
 
-  // Group sessions by workspace
-  const grouped: Record<string, SessionSummary[]> = {};
-  sessions.forEach(s => {
-    const ws = (s as any).workspace || workspace || 'default';
-    if (!grouped[ws]) grouped[ws] = [];
-    grouped[ws].push(s);
-  });
-
   return (
-    <Sider width={260} style={{
+    <Sider width={230} style={{
       background: 'var(--bg-panel)',
       borderRight: '1px solid var(--border)',
       display: 'flex',
@@ -92,129 +154,136 @@ export default function LeftSidebar(props: Props) {
       overflow: 'hidden',
     }}>
       {/* Brand */}
-      <div style={{ padding: '10px 16px 6px' }}>
-        <Text strong style={{ fontSize: 13, letterSpacing: -0.3 }}>
-          <span style={{ color: 'var(--text-primary)' }}>Codex</span>{' '}
-          <span style={{ color: '#5e6ad2' }}>Go</span>
+      <div style={{ padding: '10px 14px 4px', display: 'flex', alignItems: 'center', gap: 4 }}>
+        <Text style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.3, color: 'var(--text-primary)' }}>
+          Codex
         </Text>
+        <Text style={{ fontSize: 13, fontWeight: 600, letterSpacing: -0.3, color: '#5e6ad2' }}>
+          Go
+        </Text>
+        <DownOutlined style={{ fontSize: 9, marginLeft: 2, opacity: 0.4 }} />
       </div>
 
-      {/* Main nav */}
-      <Menu
-        mode="inline"
-        selectedKeys={[page]}
-        onClick={({ key }) => onNavigate(key as Page)}
-        items={menuItems}
-        style={{ background: 'transparent', border: 'none' }}
-      />
+      {/* Nav items */}
+      <div style={{ padding: '2px 4px' }}>
+        {navItems.map(item => (
+          <div
+            key={item.key}
+            onClick={() => onNavigate(item.key)}
+            style={{
+              display: 'flex', alignItems: 'center', gap: 8,
+              padding: '6px 12px', borderRadius: 6, cursor: 'pointer',
+              fontSize: 12, margin: '1px 0',
+              background: page === item.key ? 'var(--bg-active)' : 'transparent',
+              color: page === item.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+              fontWeight: page === item.key ? 500 : 400,
+            }}
+          >
+            <span style={{ fontSize: 14, opacity: page === item.key ? 1 : 0.6 }}>{item.icon}</span>
+            <span>{item.label}</span>
+          </div>
+        ))}
+      </div>
+
+      <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />
 
       {/* Projects section */}
-      <div style={{ padding: '4px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+      <div style={{ padding: '2px 12px', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
         <Text type="secondary" style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.08em' }}>
-          Projects
+          项目
         </Text>
-        <Button type="text" size="small" icon={<FolderAddOutlined />} onClick={openModal} />
+        <Tooltip title="打开文件夹">
+          <Button type="text" size="small" icon={<FolderAddOutlined />} onClick={openModal} style={{ fontSize: 12 }} />
+        </Tooltip>
       </div>
-      <div style={{ flex: '0 0 auto', maxHeight: 180, overflowY: 'auto', padding: '0 4px' }}>
-        {projects.length === 0 ? (
-          <Text type="secondary" style={{ fontSize: 10, padding: '4px 12px', display: 'block' }}>
-            No projects — open a folder
+      <div style={{ flex: '0 0 auto', maxHeight: 160, overflowY: 'auto', padding: '0 2px' }}>
+        {projectTree.length === 0 ? (
+          <Text type="secondary" style={{ fontSize: 10, padding: '4px 14px', display: 'block' }}>
+            无项目 — 打开文件夹
           </Text>
         ) : (
-          projects.map(proj => {
-            const name = proj.split('/').filter(Boolean).pop() || proj;
-            return (
-              <div
-                key={proj}
-                onClick={() => { onWorkspaceChange(proj); onNavigate('chat'); }}
-                style={{
-                  display: 'flex', alignItems: 'center', gap: 8,
-                  padding: '6px 10px', borderRadius: 6, cursor: 'pointer',
-                  fontSize: 12, marginBottom: 1,
-                  background: workspace === proj ? 'var(--bg-active)' : 'transparent',
-                  color: workspace === proj ? 'var(--text-primary)' : 'var(--text-secondary)',
-                  borderLeft: workspace === proj ? '2px solid #5e6ad2' : '2px solid transparent',
-                }}
-              >
-                <FolderOpenOutlined style={{ fontSize: 13, opacity: 0.7 }} />
-                <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>{name}</span>
-              </div>
-            );
-          })
+          projectTree.map(node => renderProjectNode(node))
         )}
       </div>
 
       <div style={{ height: 1, background: 'var(--border)', margin: '4px 8px' }} />
 
-      {/* Sessions */}
-      <div style={{ flex: 1, overflowY: 'auto', padding: '0 4px' }}>
+      {/* Recent tasks (conversations) */}
+      <div style={{ flex: 1, overflowY: 'auto', padding: '0 2px' }}>
         {loading ? (
-          <Text type="secondary" style={{ fontSize: 11, padding: '8px 12px', display: 'block', textAlign: 'center' }}>Loading...</Text>
-        ) : sessions.length === 0 ? (
-          <Text type="secondary" style={{ fontSize: 11, padding: '8px 12px', display: 'block', textAlign: 'center' }}>No sessions</Text>
+          <Text type="secondary" style={{ fontSize: 11, padding: '8px 14px', display: 'block', textAlign: 'center' }}>加载中...</Text>
+        ) : recentTasks.length === 0 ? (
+          <Text type="secondary" style={{ fontSize: 11, padding: '8px 14px', display: 'block', textAlign: 'center' }}>暂无任务</Text>
         ) : (
-          Object.keys(grouped).map(ws => (
-            <div key={ws}>
-              <Text type="secondary" style={{ fontSize: 9, fontWeight: 700, textTransform: 'uppercase', padding: '6px 12px 2px', display: 'block' }}>
-                📁 {ws === 'default' ? 'Default' : ws.split('/').pop() || ws}
-              </Text>
-              {grouped[ws].map(s => (
-                <div
-                  key={s.id}
-                  onClick={() => onResumeSession(s.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                    padding: '4px 8px', borderRadius: 6, cursor: 'pointer', fontSize: 11,
-                    background: s.id === sessionId ? 'var(--bg-active)' : 'transparent',
-                    borderLeft: s.id === sessionId ? '2px solid #5e6ad2' : '2px solid transparent',
-                    marginBottom: 1,
-                  }}
-                >
-                  <div style={{ overflow: 'hidden' }}>
-                    <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      {s.title || s.id.slice(-12)}
-                    </div>
-                    <Text type="secondary" style={{ fontSize: 9 }}>{s.msg_count} msgs</Text>
-                  </div>
-                  <Button
-                    type="text" size="small" danger
-                    icon={<DeleteOutlined />}
-                    onClick={(e) => handleDelete(s.id, e)}
-                    style={{ opacity: 0.4 }}
-                    className="ls-del-btn"
-                  />
+          recentTasks.map(s => (
+            <div
+              key={s.id}
+              onClick={() => onResumeSession(s.id)}
+              style={{
+                display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+                padding: '5px 10px', borderRadius: 6, cursor: 'pointer', fontSize: 11,
+                margin: '0 4px 1px',
+                background: s.id === sessionId ? 'var(--bg-active)' : 'transparent',
+                borderLeft: s.id === sessionId ? '2px solid #5e6ad2' : '2px solid transparent',
+              }}
+            >
+              <div style={{ overflow: 'hidden', flex: 1 }}>
+                <div style={{ fontWeight: 500, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', fontSize: 11 }}>
+                  {s.title || s.id.slice(-12)}
                 </div>
-              ))}
+              </div>
+              <Button
+                type="text" size="small" danger
+                icon={<DeleteOutlined />}
+                onClick={(e) => handleDelete(s.id, e)}
+                style={{ opacity: 0, fontSize: 10 }}
+                className="ls-del-btn"
+              />
             </div>
           ))
+        )}
+        {sessions.length > 5 && (
+          <Text type="secondary" style={{ fontSize: 10, padding: '4px 14px', display: 'block', cursor: 'pointer' }}>
+            展开显示
+          </Text>
         )}
       </div>
 
       {/* New session */}
-      <div style={{ padding: '4px 8px' }}>
-        <Button block size="small" icon={<PlusOutlined />} onClick={onNewSession}>
-          New Session
+      <div style={{ padding: '2px 8px' }}>
+        <Button block size="small" icon={<PlusOutlined />} onClick={onNewSession} style={{ fontSize: 11 }}>
+          新建任务
         </Button>
       </div>
 
-      {/* Settings */}
-      <div style={{ borderTop: '1px solid var(--border)' }}>
-        <Menu
-          mode="inline"
-          selectedKeys={[page]}
-          onClick={({ key }) => onNavigate(key as Page)}
-          items={[{ key: 'settings', icon: <SettingOutlined />, label: 'Settings' }]}
-          style={{ background: 'transparent', border: 'none' }}
-        />
+      {/* Bottom */}
+      <div style={{
+        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
+        padding: '6px 12px', borderTop: '1px solid var(--border)',
+      }}>
+        <div
+          onClick={() => onNavigate('settings')}
+          style={{
+            display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+            color: page === 'settings' ? 'var(--accent)' : 'var(--text-muted)',
+            fontSize: 18,
+          }}
+        >
+          <SettingOutlined />
+        </div>
+        <Text type="secondary" style={{ fontSize: 9 }}>
+          <BulbOutlined style={{ marginRight: 3 }} />v1.0
+        </Text>
       </div>
 
       {/* Open Folder Modal */}
       <Modal
-        title="Open Folder as Project"
+        title="打开文件夹作为项目"
         open={modalOpen}
         onCancel={() => setModalOpen(false)}
         onOk={handleAddProject}
-        okText="Open"
+        okText="打开"
+        cancelText="取消"
         width={480}
       >
         <Space direction="vertical" style={{ width: '100%' }} size={12}>
@@ -229,13 +298,13 @@ export default function LeftSidebar(props: Props) {
             const parent = wsPath.split('/').slice(0, -1).join('/') || '/';
             browseDir(parent);
           }}>
-            ⬆ Parent directory
+            ⬆ 上级目录
           </Button>
           <div style={{ maxHeight: 240, overflowY: 'auto', border: '1px solid var(--border)', borderRadius: 6, padding: 4 }}>
             {treeData.length === 0 ? (
-              <Text type="secondary" style={{ padding: 12, display: 'block', textAlign: 'center' }}>No directories</Text>
+              <Text type="secondary" style={{ padding: 12, display: 'block', textAlign: 'center' }}>无目录</Text>
             ) : (
-              treeData.map(d => (
+              treeData.map((d: any) => (
                 <div
                   key={d.key}
                   onClick={() => browseDir(d.key)}
@@ -244,7 +313,6 @@ export default function LeftSidebar(props: Props) {
                     padding: '6px 8px', borderRadius: 4, cursor: 'pointer',
                     fontSize: 12, color: '#5e6ad2',
                   }}
-                  className="rp-file-item is-dir"
                 >
                   <FolderOpenOutlined /> {d.title}
                 </div>
