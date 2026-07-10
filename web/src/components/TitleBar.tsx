@@ -6,6 +6,8 @@ interface ElectronAPI {
   close: () => void;
   isMaximized: () => Promise<boolean>;
   platform: string;
+  selectFolder: () => Promise<string | null>;
+  getDefaultPath: () => Promise<string>;
 }
 
 declare global {

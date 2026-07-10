@@ -121,6 +121,23 @@ ipcMain.on('win-maximize', () => {
 });
 ipcMain.on('win-close', () => { isQuitting = true; app.quit(); });
 
+// ============ Folder picker IPC ============
+
+ipcMain.handle('dialog-select-folder', async () => {
+  if (!mainWindow) return null;
+  const result = await dialog.showOpenDialog(mainWindow, {
+    properties: ['openDirectory'],
+    title: '选择项目文件夹',
+  });
+  if (result.canceled || result.filePaths.length === 0) return null;
+  return result.filePaths[0];
+});
+
+ipcMain.handle('get-default-path', () => {
+  if (process.platform === 'win32') return process.env.USERPROFILE || 'C:\\';
+  return process.env.HOME || '/';
+});
+
 // ============ Pet Window ============
 
 function createPetWindow() {

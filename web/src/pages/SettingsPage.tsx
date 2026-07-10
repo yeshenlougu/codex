@@ -1,18 +1,16 @@
 import { useState, useMemo } from 'react';
 import { Layout, Input, Typography, Button } from 'antd';
 import {
-  ArrowLeftOutlined, SearchOutlined, SettingOutlined, RobotOutlined,
-  ApiOutlined, TeamOutlined, ImportOutlined, InfoCircleOutlined,
+  ArrowLeftOutlined, SearchOutlined, SettingOutlined,
+  TeamOutlined,
 } from '@ant-design/icons';
 import AgentSettings from './settings/AgentSettings';
 import AgentManager from './settings/AgentManager';
-import BackendManager from './settings/BackendManager';
-import ImportExport from './settings/ImportExport';
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
-type SubPage = 'general' | 'agents' | 'backends' | 'import-export';
+type SubPage = 'general' | 'agents';
 
 interface Category {
   label: string;
@@ -27,16 +25,9 @@ const categories: Category[] = [
       { key: 'agents', label: 'Agents', icon: <TeamOutlined /> },
     ],
   },
-  {
-    label: 'Services',
-    items: [
-      { key: 'backends', label: 'Backends', icon: <ApiOutlined /> },
-      { key: 'import-export', label: 'Import & Export', icon: <ImportOutlined /> },
-    ],
-  },
 ];
 
-export default function SettingsPage({ onBack }: { onBack?: () => void }) {
+export default function SettingsPage() {
   const [sub, setSub] = useState<SubPage>('general');
   const [search, setSearch] = useState('');
 
@@ -60,13 +51,8 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
         background: 'var(--bg-panel)', borderRight: '1px solid var(--border)',
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
-        {/* Back + search */}
-        <div style={{ padding: '8px 12px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {onBack && (
-            <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack} style={{ alignSelf: 'flex-start', fontSize: 12, padding: '0 8px' }}>
-              返回应用
-            </Button>
-          )}
+        {/* Search */}
+        <div style={{ padding: '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
           <Input
             prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
             placeholder="搜索设置..."
@@ -114,8 +100,6 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
         <div style={{ maxWidth: 640 }}>
           {sub === 'general' && <AgentSettings />}
           {sub === 'agents' && <AgentManager />}
-          {sub === 'backends' && <BackendManager />}
-          {sub === 'import-export' && <ImportExport />}
         </div>
       </Content>
     </Layout>

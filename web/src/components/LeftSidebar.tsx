@@ -1,9 +1,9 @@
 import { useState, useEffect, useMemo } from 'react';
-import { Layout, Button, Modal, Input, Space, Typography, Tooltip, Dropdown } from 'antd';
+import { Layout, Button, Modal, Input, Space, Typography, Tooltip } from 'antd';
 import {
   PlusOutlined, FolderOpenOutlined, FolderAddOutlined, DeleteOutlined,
   HomeOutlined, EditOutlined, ClockCircleOutlined, AppstoreOutlined,
-  SettingOutlined, QuestionCircleOutlined, DownOutlined, BulbOutlined,
+  SettingOutlined, DownOutlined, BulbOutlined,
 } from '@ant-design/icons';
 import type { SessionSummary } from '../lib/types';
 import { listSessions, deleteSession, listFiles } from '../lib/api';
@@ -56,9 +56,21 @@ export default function LeftSidebar(props: Props) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [modalOpen, setModalOpen] = useState(false);
-  const [wsPath, setWsPath] = useState('/home/ubuntu');
+  const [wsPath, setWsPath] = useState('/');
   const [treeData, setTreeData] = useState<any[]>([]);
   const [expandedProjects, setExpandedProjects] = useState<Record<string, boolean>>({});
+
+  const isElectron = !!window.electronAPI;
+
+  // Get OS-aware default path on mount
+  useEffect(() => {
+    if (window.electronAPI) {
+      window.electronAPI.getDefaultPath().then(p => setWsPath(p)).catch(() => setWsPath('/'));
+    } else {
+      // Web fallback: use reasonable default
+      setWsPath('/');
+    }
+  }, []);
 
   const load = () => {
     listSessions().then(d => setSessions(d.sessions || [])).catch(() => {}).finally(() => setLoading(false));
@@ -81,7 +93,18 @@ export default function LeftSidebar(props: Props) {
     } catch { setTreeData([]); }
   };
 
-  const openModal = () => {
+  const openModal = async () => {
+    // In Electron: use native folder picker
+    if (window.electronAPI?.selectFolder) {
+      try {
+        const folder = await window.electronAPI.selectFolder();
+        if (folder) {
+          onProjectAdd(folder);
+        }
+      } catch { /* fall back to modal */ }
+      return;
+    }
+    // In browser: show manual path input modal
     setModalOpen(true);
     browseDir(wsPath);
   };
