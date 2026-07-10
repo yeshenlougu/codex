@@ -80,10 +80,10 @@ desktop: web build-all
 	@cd $(DESKTOP_DIR)/release && tar -czf ../codex-go-windows-portable.tar.gz "Codex Go" 2>/dev/null || true
 	@# Build NSIS installer
 	@echo "🔧 Building NSIS installer..."
-	@cp $(CLI_DIR)/installer.nsi $(DESKTOP_DIR)/installer.nsi 2>/dev/null || true
-	@makensis $(DESKTOP_DIR)/installer.nsi 2>&1 | tail -3
+	@cp installer.nsi $(DESKTOP_DIR)/installer.nsi
+	@cd $(DESKTOP_DIR) && makensis installer.nsi 2>&1 | tail -3
 	@# Cleanup intermediates
-	@rm -rf $(DESKTOP_SRC)/codex-go.exe $(DESKTOP_SRC)/release
+	@rm -rf $(DESKTOP_SRC)/codex-go.exe $(DESKTOP_SRC)/release $(DESKTOP_DIR)/installer.nsi
 	@echo ""
 	@echo "✅ Desktop packages:"
 	@ls -lh $(DESKTOP_DIR)/codex-go-windows-portable.tar.gz $(DESKTOP_DIR)/Codex-Go-Setup-*.exe 2>/dev/null
