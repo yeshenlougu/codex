@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Card, Input, Button, Select, Tag, Row, Col, Typography, Tooltip } from 'antd';
+import { Card, Input, Button, Select, Tag, Row, Col, Typography, Tooltip, Space } from 'antd';
 import {
   SendOutlined, SearchOutlined, ToolOutlined, BugOutlined, AuditOutlined,
   FileTextOutlined, StopOutlined, FolderOpenOutlined, FolderOutlined,
-  SafetyOutlined,
+  SafetyOutlined, BranchesOutlined, RobotOutlined,
 } from '@ant-design/icons';
 import { streamMessage, getConfig, listAgents, getTasks, implementTask } from '../lib/api';
 import type { AgentProfile } from '../lib/types';
@@ -27,6 +27,7 @@ export default function ChatPage({ sessionId, workspace }: Props) {
   const [model, setModel] = useState('gpt-4');
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [activeAgent, setActiveAgent] = useState('default');
+  const [branch, setBranch] = useState('main');
   const [progress, setProgress] = useState({ step: 0, total: 0 });
   const [abortController, setAbortController] = useState<AbortController | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -40,19 +41,14 @@ export default function ChatPage({ sessionId, workspace }: Props) {
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streaming]);
 
   const stopGeneration = () => {
-    if (abortController) {
-      abortController.abort();
-      setAbortController(null);
-    }
-    setSending(false);
-    setStreaming('');
+    if (abortController) { abortController.abort(); setAbortController(null); }
+    setSending(false); setStreaming('');
   };
 
   const handleSend = useCallback(async () => {
     const text = input.trim();
     if (!text || sending) return;
 
-    // Slash commands
     if (text.startsWith('/tasks')) {
       setSending(true); setInput('');
       setMessages(prev => [...prev, { role: 'user', content: text }]);
@@ -74,30 +70,23 @@ export default function ChatPage({ sessionId, workspace }: Props) {
     const fileMatches = text.match(/[\w./-]+\.\w{1,6}/g) || [];
     setMessages(prev => [...prev, { role: 'user', content: text, files: fileMatches }]);
 
-    // Simulate progress: 3 steps
     setProgress({ step: 1, total: 3 });
     const p1 = setTimeout(() => setProgress({ step: 2, total: 3 }), 800);
     const p2 = setTimeout(() => setProgress({ step: 3, total: 3 }), 1600);
 
-    const ac = new AbortController();
-    setAbortController(ac);
-
+    const ac = new AbortController(); setAbortController(ac);
     let fullText = ''; setStreaming('');
     await streamMessage(text, sessionId,
       chunk => { fullText += chunk; setStreaming(fullText); },
       done => {
         clearTimeout(p1); clearTimeout(p2);
-        setProgress({ step: 0, total: 0 });
-        setStreaming('');
-        setAbortController(null);
+        setProgress({ step: 0, total: 0 }); setStreaming(''); setAbortController(null);
         setMessages(prev => [...prev, { role: 'assistant', content: done, agent: activeAgent }]);
         setSending(false);
       },
       err => {
         clearTimeout(p1); clearTimeout(p2);
-        setProgress({ step: 0, total: 0 });
-        setStreaming(''); setSending(false);
-        setAbortController(null);
+        setProgress({ step: 0, total: 0 }); setStreaming(''); setSending(false); setAbortController(null);
         setMessages(prev => [...prev, { role: 'assistant', content: `Error: ${err}`, agent: activeAgent }]);
       },
       activeAgent !== 'default' ? activeAgent : undefined,
@@ -108,7 +97,6 @@ export default function ChatPage({ sessionId, workspace }: Props) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
-  // Feature cards for welcome state
   const featureCards = [
     { icon: <SearchOutlined style={{ fontSize: 20, color: '#5e6ad2' }} />, title: 'Explore & Understand Code', desc: 'Analyze codebase, explain logic, find patterns', action: 'Analyze this codebase' },
     { icon: <ToolOutlined style={{ fontSize: 20, color: '#7c5cfc' }} />, title: 'Build New Features', desc: 'Create features, apps, or tools from scratch', action: 'Build a new feature' },
@@ -118,7 +106,7 @@ export default function ChatPage({ sessionId, workspace }: Props) {
 
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Context bar — Codex style */}
+      {/* Context bar — workspace only */}
       <div style={{
         display: 'flex', alignItems: 'center', gap: 10, padding: '4px 16px',
         borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', flexShrink: 0,
@@ -135,42 +123,26 @@ export default function ChatPage({ sessionId, workspace }: Props) {
 
         <div style={{ flex: 1 }} />
 
-        {/* Progress indicator */}
         {progress.total > 0 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
             background: 'var(--bg-active)', padding: '2px 10px', borderRadius: 10,
             fontSize: 11, color: 'var(--accent)',
           }}>
-            <div style={{
-              width: 8, height: 8, borderRadius: '50%',
-              background: 'var(--accent)', animation: 'pulse 1.5s infinite',
-            }} />
+            <div style={{ width: 8, height: 8, borderRadius: '50%', background: 'var(--accent)', animation: 'pulse 1.5s infinite' }} />
             第 {progress.step} / {progress.total} 步
           </div>
         )}
-
-        {/* Agent select */}
-        <Select size="small" value={activeAgent} onChange={setActiveAgent} style={{ width: 140 }}
-          options={[{ value: 'default', label: '🤖 default' }, ...agents.map(a => ({ value: a.name, label: `${a.avatar || '🤖'} ${a.name}` }))]}
-        />
-
-        {/* Model indicator */}
-        <Text type="secondary" style={{ fontSize: 10, color: 'var(--text-muted)', whiteSpace: 'nowrap' }}>
-          5.5 高
-        </Text>
       </div>
 
       {/* Messages OR Welcome */}
       <div style={{ flex: 1, overflowY: 'auto', padding: '16px 24px' }}>
         {messages.length === 0 && !streaming ? (
-          /* Welcome page */
           <div style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', justifyContent: 'center', height: '100%', gap: 24, paddingBottom: 60 }}>
             <div style={{
               width: 80, height: 80, borderRadius: 20,
               background: 'linear-gradient(135deg, rgba(94,106,210,0.15), rgba(124,92,252,0.1))',
-              display: 'flex', alignItems: 'center', justifyContent: 'center',
-              fontSize: 32,
+              display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 32,
             }}>🦊</div>
             <Title level={3} style={{ margin: 0, textAlign: 'center', maxWidth: 500 }}>
               What should we build in <span style={{ color: '#5e6ad2' }}>{workspaceName}</span>?
@@ -179,17 +151,10 @@ export default function ChatPage({ sessionId, workspace }: Props) {
               💡 Use <code>@agent-name</code> to invoke a specific agent.
               📋 Try <code>/spec</code> <code>/plan</code> <code>/tasks</code> <code>/implement</code>
             </Text>
-
-            {/* Feature cards grid */}
             <Row gutter={[12, 12]} style={{ maxWidth: 640, width: '100%' }}>
               {featureCards.map((card, i) => (
                 <Col span={12} key={i}>
-                  <Card
-                    size="small"
-                    hoverable
-                    onClick={() => setInput(card.action)}
-                    style={{ height: '100%', cursor: 'pointer' }}
-                  >
+                  <Card size="small" hoverable onClick={() => setInput(card.action)} style={{ height: '100%', cursor: 'pointer' }}>
                     <div style={{ display: 'flex', flexDirection: 'column', gap: 6 }}>
                       {card.icon}
                       <Text strong style={{ fontSize: 13 }}>{card.title}</Text>
@@ -201,7 +166,6 @@ export default function ChatPage({ sessionId, workspace }: Props) {
             </Row>
           </div>
         ) : (
-          /* Messages */
           <div style={{ display: 'flex', flexDirection: 'column', gap: 16 }}>
             {messages.map((m, i) => (
               <div key={i} style={{ display: 'flex', gap: 10 }}>
@@ -221,11 +185,7 @@ export default function ChatPage({ sessionId, workspace }: Props) {
                   </div>
                   {m.files && m.files.length > 0 && (
                     <div style={{ marginTop: 6, display: 'flex', gap: 4, flexWrap: 'wrap' }}>
-                      {m.files.map((f, j) => (
-                        <Tag key={j} icon={<FileTextOutlined />} style={{ borderRadius: 4, fontSize: 10 }}>
-                          {f}
-                        </Tag>
-                      ))}
+                      {m.files.map((f, j) => <Tag key={j} icon={<FileTextOutlined />} style={{ borderRadius: 4, fontSize: 10 }}>{f}</Tag>)}
                     </div>
                   )}
                 </div>
@@ -247,15 +207,15 @@ export default function ChatPage({ sessionId, workspace }: Props) {
         )}
       </div>
 
-      {/* Input area — Codex style */}
-      <div style={{ padding: '10px 24px 14px', borderTop: '1px solid var(--border)', background: 'var(--bg-root)' }}>
+      {/* Input area — chat room style */}
+      <div style={{ padding: '8px 24px 10px', borderTop: '1px solid var(--border)', background: 'var(--bg-root)' }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
+          {/* Main input row */}
           <div style={{
             display: 'flex', alignItems: 'flex-end', gap: 8,
             background: 'var(--bg-panel)', border: '1px solid var(--border)',
             borderRadius: 10, padding: '6px 8px',
           }}>
-            {/* Add file / context button */}
             <Tooltip title="添加上下文">
               <Button type="text" size="small" icon={<span style={{ fontWeight: 700, fontSize: 16 }}>+</span>}
                 style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
@@ -276,51 +236,64 @@ export default function ChatPage({ sessionId, workspace }: Props) {
               className="chat-input-textarea"
             />
 
-            {/* Full access indicator */}
+            {sending ? (
+              <Button type="text" size="small" icon={<StopOutlined />} onClick={stopGeneration}
+                style={{ width: 30, height: 30, borderRadius: 15, background: 'var(--bg-elevated)', color: 'var(--text-secondary)', flexShrink: 0 }} />
+            ) : (
+              <Button type="primary" icon={<SendOutlined />} onClick={handleSend} disabled={!input.trim()}
+                style={{ width: 30, height: 30, borderRadius: 15, flexShrink: 0, padding: 0 }} />
+            )}
+          </div>
+
+          {/* Bottom toolbar: Agent + Branch + Context */}
+          <div style={{
+            display: 'flex', alignItems: 'center', gap: 8, marginTop: 6,
+            padding: '0 4px', flexWrap: 'wrap',
+          }}>
+            {/* Agent selector — the model belongs to the agent */}
+            <Select
+              size="small"
+              value={activeAgent}
+              onChange={setActiveAgent}
+              style={{ minWidth: 140 }}
+              options={[
+                { value: 'default', label: '🤖 default (GPT-4)' },
+                ...agents.map(a => ({ value: a.name, label: `${a.avatar || '🤖'} ${a.name}` })),
+              ]}
+            />
+
+            {/* Branch selector */}
+            <Select
+              size="small"
+              value={branch}
+              onChange={setBranch}
+              style={{ minWidth: 110 }}
+              options={[
+                { value: 'main', label: '🌿 main' },
+                { value: 'develop', label: '🌿 develop' },
+                { value: 'feature/ai-agent', label: '🌿 feature/ai-agent' },
+              ]}
+            />
+
+            <div style={{ flex: 1 }} />
+
+            {/* Access level */}
             {activeAgent !== 'default' && (
-              <Tooltip title="完全访问">
-                <Tag color="orange" style={{ margin: 0, fontSize: 10, lineHeight: '20px', flexShrink: 0 }}>
-                  <SafetyOutlined /> 完全访问
-                </Tag>
-              </Tooltip>
+              <Tag color="orange" style={{ margin: 0, fontSize: 10, lineHeight: '20px' }}>
+                <SafetyOutlined /> 完全访问
+              </Tag>
             )}
 
-            {/* Send / Stop */}
-            {sending ? (
-              <Button
-                type="text"
-                size="small"
-                icon={<StopOutlined />}
-                onClick={stopGeneration}
-                style={{
-                  width: 30, height: 30, borderRadius: 15,
-                  background: 'var(--bg-elevated)', color: 'var(--text-secondary)',
-                  flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                }}
-              />
-            ) : (
-              <Button
-                type="primary"
-                icon={<SendOutlined />}
-                onClick={handleSend}
-                disabled={!input.trim()}
-                style={{
-                  width: 30, height: 30, borderRadius: 15,
-                  flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  padding: 0,
-                }}
-              />
-            )}
+            {/* Model badge (determined by agent) */}
+            <Text type="secondary" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
+              {model}
+            </Text>
           </div>
         </div>
       </div>
 
-      {/* CSS for pulse animation */}
       <style>{`
-        @keyframes pulse {
-          0%, 100% { opacity: 1; }
-          50% { opacity: 0.4; }
-        }
+        @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:0.4} }
         .chat-input-textarea { box-shadow: none !important; }
         .chat-input-textarea:focus { box-shadow: none !important; }
       `}</style>
@@ -328,7 +301,6 @@ export default function ChatPage({ sessionId, workspace }: Props) {
   );
 }
 
-// Simple markdown renderer (code blocks + file path chips)
 function Markdown({ text }: { text: string }) {
   const blocks = useMemo(() => {
     const parts: { type: 'text' | 'code'; content: string; lang?: string }[] = [];
@@ -343,7 +315,6 @@ function Markdown({ text }: { text: string }) {
     return parts;
   }, [text]);
 
-  // Highlight file paths like F:\...\file.java
   function renderText(plain: string): React.ReactNode[] {
     const pathRe = /([A-Z]:\\[\w\-\\]+\.[\w]+)/g;
     const elements: React.ReactNode[] = [];

@@ -79,9 +79,8 @@ function AppContent() {
         )}
       </div>
       <div className="statusbar">
-        <span>Codex Go v1.0.0</span>
-        <span>Workspace: {workspace}</span>
-        <span style={{ marginLeft: 'auto' }}>Session: {sessionId.slice(-12)}</span>
+        <span>Codex Go</span>
+        <span style={{ marginLeft: 'auto' }}>🟢 在线</span>
       </div>
     </div>
     </ConfigProvider>
