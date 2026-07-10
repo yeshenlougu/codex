@@ -1,9 +1,9 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Card, Input, Button, Select, Tag, Row, Col, Typography, Tooltip, Space } from 'antd';
+import { Card, Input, Button, Select, Tag, Row, Col, Typography, Tooltip, Popover, Radio } from 'antd';
 import {
   SendOutlined, SearchOutlined, ToolOutlined, BugOutlined, AuditOutlined,
   FileTextOutlined, StopOutlined, FolderOpenOutlined, FolderOutlined,
-  SafetyOutlined, BranchesOutlined, RobotOutlined,
+  SafetyOutlined, PlusOutlined, SettingOutlined,
 } from '@ant-design/icons';
 import { streamMessage, getConfig, listAgents, getTasks, implementTask } from '../lib/api';
 import type { AgentProfile } from '../lib/types';
@@ -18,15 +18,26 @@ interface Props {
 
 interface Msg { role: 'user' | 'assistant'; content: string; files?: string[]; agent?: string }
 
+// Per-agent config in this chat room
+interface AgentSlot {
+  name: string;
+  avatar: string;
+  model: string;
+  access: 'full' | 'readonly' | 'sandbox';
+}
+
+const DEFAULT_AGENT: AgentSlot = { name: 'default', avatar: '🤖', model: 'GPT-4', access: 'full' };
+
 export default function ChatPage({ sessionId, workspace }: Props) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState('');
   const [sending, setSending] = useState(false);
   const [streaming, setStreaming] = useState('');
-  const [provider, setProvider] = useState('openai');
-  const [model, setModel] = useState('gpt-4');
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [activeAgent, setActiveAgent] = useState('default');
+  // Agent slots in this chat room (each with own model + access)
+  const [agentSlots, setAgentSlots] = useState<AgentSlot[]>([DEFAULT_AGENT]);
+  const [editingSlot, setEditingSlot] = useState<number | null>(null);
   const [branch, setBranch] = useState('main');
   const [progress, setProgress] = useState({ step: 0, total: 0 });
   const [abortController, setAbortController] = useState<AbortController | null>(null);
@@ -35,7 +46,10 @@ export default function ChatPage({ sessionId, workspace }: Props) {
   const workspaceName = workspace.split('/').filter(Boolean).pop() || workspace;
 
   useEffect(() => {
-    getConfig().then(c => { setProvider(c.provider); setModel(c.model); }).catch(() => {});
+    getConfig().then(c => {
+      // Sync config model to default agent
+      setAgentSlots(prev => prev.map((s, i) => i === 0 ? { ...s, model: c.model || s.model } : s));
+    }).catch(() => {});
     listAgents().then(a => setAgents(a.agents || [])).catch(() => {});
   }, []);
   useEffect(() => { bottomRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [messages, streaming]);
@@ -97,6 +111,21 @@ export default function ChatPage({ sessionId, workspace }: Props) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  const addAgentSlot = () => {
+    const newSlot: AgentSlot = { name: `agent-${agentSlots.length + 1}`, avatar: '🤖', model: 'GPT-4', access: 'readonly' };
+    setAgentSlots(prev => [...prev, newSlot]);
+  };
+
+  const updateSlot = (idx: number, updates: Partial<AgentSlot>) => {
+    setAgentSlots(prev => prev.map((s, i) => i === idx ? { ...s, ...updates } : s));
+  };
+
+  const removeSlot = (idx: number) => {
+    if (idx === 0) return; // can't remove default
+    setAgentSlots(prev => prev.filter((_, i) => i !== idx));
+    if (activeAgent === agentSlots[idx].name) setActiveAgent('default');
+  };
+
   const featureCards = [
     { icon: <SearchOutlined style={{ fontSize: 20, color: '#5e6ad2' }} />, title: 'Explore & Understand Code', desc: 'Analyze codebase, explain logic, find patterns', action: 'Analyze this codebase' },
     { icon: <ToolOutlined style={{ fontSize: 20, color: '#7c5cfc' }} />, title: 'Build New Features', desc: 'Create features, apps, or tools from scratch', action: 'Build a new feature' },
@@ -104,16 +133,18 @@ export default function ChatPage({ sessionId, workspace }: Props) {
     { icon: <BugOutlined style={{ fontSize: 20, color: '#d19a00' }} />, title: 'Fix Issues & Failures', desc: 'Debug errors, fix bugs, resolve problems', action: 'Debug this error' },
   ];
 
+  const activeSlot = agentSlots.find(s => s.name === activeAgent) || agentSlots[0];
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      {/* Context bar — workspace only */}
+      {/* Context bar — workspace + agents */}
       <div style={{
-        display: 'flex', alignItems: 'center', gap: 10, padding: '4px 16px',
+        display: 'flex', alignItems: 'center', gap: 8, padding: '4px 16px',
         borderBottom: '1px solid var(--border)', background: 'var(--bg-panel)', flexShrink: 0,
-        minHeight: 36,
+        minHeight: 38,
       }}>
         <FolderOutlined style={{ color: 'var(--accent)', fontSize: 14 }} />
-        <Text style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500, maxWidth: 200, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+        <Text style={{ fontSize: 12, color: 'var(--text-primary)', fontWeight: 500, maxWidth: 180, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
           {workspaceName}
         </Text>
         <Tooltip title="打开位置">
@@ -121,8 +152,104 @@ export default function ChatPage({ sessionId, workspace }: Props) {
             style={{ color: 'var(--text-muted)', fontSize: 13 }} />
         </Tooltip>
 
+        {/* Divider */}
+        <div style={{ width: 1, height: 20, background: 'var(--border)', margin: '0 4px' }} />
+
+        {/* Agent slots — click to config */}
+        {agentSlots.map((slot, idx) => (
+          <Popover
+            key={slot.name}
+            trigger="click"
+            content={
+              <div style={{ width: 240 }}>
+                <Text strong style={{ fontSize: 12, display: 'block', marginBottom: 10 }}>
+                  {slot.avatar} {slot.name}
+                </Text>
+
+                <div style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 10, display: 'block', marginBottom: 4 }}>模型</Text>
+                  <Select
+                    size="small"
+                    value={slot.model}
+                    onChange={v => updateSlot(idx, { model: v })}
+                    style={{ width: '100%' }}
+                    options={[
+                      { value: 'GPT-4', label: 'GPT-4' },
+                      { value: 'GPT-4o', label: 'GPT-4o' },
+                      { value: 'Claude 3.5', label: 'Claude 3.5 Sonnet' },
+                      { value: 'DeepSeek V3', label: 'DeepSeek V3' },
+                      { value: 'Gemini Pro', label: 'Gemini Pro' },
+                    ]}
+                  />
+                </div>
+
+                <div style={{ marginBottom: 8 }}>
+                  <Text type="secondary" style={{ fontSize: 10, display: 'block', marginBottom: 4 }}>权限</Text>
+                  <Radio.Group
+                    size="small"
+                    value={slot.access}
+                    onChange={e => updateSlot(idx, { access: e.target.value })}
+                  >
+                    <Space direction="vertical" size={4}>
+                      <Radio value="full">
+                        <Text style={{ fontSize: 11 }}>🔓 完全访问</Text>
+                        <Text type="secondary" style={{ fontSize: 9, display: 'block' }}>读/写/执行</Text>
+                      </Radio>
+                      <Radio value="readonly">
+                        <Text style={{ fontSize: 11 }}>📖 只读</Text>
+                        <Text type="secondary" style={{ fontSize: 9, display: 'block' }}>仅读取文件</Text>
+                      </Radio>
+                      <Radio value="sandbox">
+                        <Text style={{ fontSize: 11 }}>📦 沙箱</Text>
+                        <Text type="secondary" style={{ fontSize: 9, display: 'block' }}>隔离环境，无网络</Text>
+                      </Radio>
+                    </Space>
+                  </Radio.Group>
+                </div>
+
+                {idx > 0 && (
+                  <Button size="small" danger block onClick={() => removeSlot(idx)} style={{ marginTop: 4 }}>
+                    移除此 Agent
+                  </Button>
+                )}
+              </div>
+            }
+          >
+            <div
+              onClick={() => setActiveAgent(slot.name)}
+              style={{
+                display: 'flex', alignItems: 'center', gap: 4,
+                padding: '2px 8px', borderRadius: 14, cursor: 'pointer',
+                fontSize: 11,
+                background: activeAgent === slot.name ? 'var(--accent-dim)' : 'transparent',
+                border: activeAgent === slot.name ? '1px solid var(--accent)' : '1px solid transparent',
+                color: activeAgent === slot.name ? 'var(--accent)' : 'var(--text-secondary)',
+                fontWeight: activeAgent === slot.name ? 500 : 400,
+              }}
+            >
+              <span>{slot.avatar}</span>
+              <span>{slot.name}</span>
+              <SettingOutlined style={{ fontSize: 9, opacity: 0.5, marginLeft: 2 }} />
+            </div>
+          </Popover>
+        ))}
+
+        {/* Add agent */}
+        <Tooltip title="添加 Agent">
+          <Button type="text" size="small" icon={<PlusOutlined />} onClick={addAgentSlot}
+            style={{ color: 'var(--text-muted)', fontSize: 11, width: 22, height: 22, padding: 0, borderRadius: 11 }} />
+        </Tooltip>
+
         <div style={{ flex: 1 }} />
 
+        {/* Active agent model badge */}
+        <Tooltip title={`当前模型: ${activeSlot.model} · 权限: ${activeSlot.access}`}>
+          <Tag style={{ margin: 0, fontSize: 10, lineHeight: '18px' }}>
+            {activeSlot.model}
+          </Tag>
+        </Tooltip>
+
+        {/* Progress indicator */}
         {progress.total > 0 && (
           <div style={{
             display: 'flex', alignItems: 'center', gap: 6,
@@ -245,24 +372,11 @@ export default function ChatPage({ sessionId, workspace }: Props) {
             )}
           </div>
 
-          {/* Bottom toolbar: Agent + Branch + Context */}
+          {/* Bottom toolbar: Branch only */}
           <div style={{
             display: 'flex', alignItems: 'center', gap: 8, marginTop: 6,
-            padding: '0 4px', flexWrap: 'wrap',
+            padding: '0 4px',
           }}>
-            {/* Agent selector — the model belongs to the agent */}
-            <Select
-              size="small"
-              value={activeAgent}
-              onChange={setActiveAgent}
-              style={{ minWidth: 140 }}
-              options={[
-                { value: 'default', label: '🤖 default (GPT-4)' },
-                ...agents.map(a => ({ value: a.name, label: `${a.avatar || '🤖'} ${a.name}` })),
-              ]}
-            />
-
-            {/* Branch selector */}
             <Select
               size="small"
               value={branch}
@@ -277,16 +391,8 @@ export default function ChatPage({ sessionId, workspace }: Props) {
 
             <div style={{ flex: 1 }} />
 
-            {/* Access level */}
-            {activeAgent !== 'default' && (
-              <Tag color="orange" style={{ margin: 0, fontSize: 10, lineHeight: '20px' }}>
-                <SafetyOutlined /> 完全访问
-              </Tag>
-            )}
-
-            {/* Model badge (determined by agent) */}
             <Text type="secondary" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-              {model}
+              {activeSlot.model} · {activeSlot.access === 'full' ? '完全访问' : activeSlot.access === 'readonly' ? '只读' : '沙箱'}
             </Text>
           </div>
         </div>
