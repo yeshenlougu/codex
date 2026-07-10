@@ -1,53 +1,51 @@
 import { useState } from 'react';
+import { ConfigProvider, theme, Layout, Menu, Typography } from 'antd';
+import { RobotOutlined, TeamOutlined, ApiOutlined, ImportOutlined } from '@ant-design/icons';
 import AgentSettings from './settings/AgentSettings';
 import AgentManager from './settings/AgentManager';
 import BackendManager from './settings/BackendManager';
 import ImportExport from './settings/ImportExport';
 
+const { Sider, Content } = Layout;
+const { Title } = Typography;
+
 type SubPage = 'agent' | 'agents' | 'backends' | 'import-export';
 
-const subNav: { id: SubPage; label: string; icon: string }[] = [
-  { id: 'agent', label: 'Agent Config', icon: '🤖' },
-  { id: 'agents', label: 'Agent Manager', icon: '👥' },
-  { id: 'backends', label: 'Backends', icon: '🔌' },
-  { id: 'import-export', label: 'Import / Export', icon: '📦' },
+const items: { key: SubPage; label: string; icon: React.ReactNode }[] = [
+  { key: 'agent', label: 'Agent', icon: <RobotOutlined /> },
+  { key: 'agents', label: 'Agents', icon: <TeamOutlined /> },
+  { key: 'backends', label: 'Backends', icon: <ApiOutlined /> },
+  { key: 'import-export', label: 'Import & Export', icon: <ImportOutlined /> },
 ];
 
 export default function SettingsPage() {
   const [sub, setSub] = useState<SubPage>('agent');
 
   return (
-    <>
-      <aside className="sidebar">
-        <div className="sidebar-header">
-          <h3>Settings</h3>
+    <Layout style={{ height: '100%', background: 'transparent' }}>
+      <Sider width={200} style={{ background: 'var(--bg-panel)', borderRight: '1px solid var(--border)' }}>
+        <div style={{ padding: '12px 16px 8px' }}>
+          <Typography.Text type="secondary" style={{ fontSize: 11, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.1em' }}>
+            Settings
+          </Typography.Text>
         </div>
-        <div style={{ padding: '4px 6px' }}>
-          {subNav.map((item) => (
-            <div
-              key={item.id}
-              className={`session-item ${sub === item.id ? 'active' : ''}`}
-              onClick={() => setSub(item.id)}
-              style={{ padding: '8px 10px' }}
-            >
-              <div className="session-info">
-                <div className="session-title">
-                  {item.icon} {item.label}
-                </div>
-              </div>
-            </div>
-          ))}
-        </div>
-      </aside>
-      <div className="settings-container" style={{ flex: 1 }}>
-        <h2 style={{ fontSize: 18, fontWeight: 600, color: 'var(--text-primary)', marginBottom: 16 }}>
-          {subNav.find((x) => x.id === sub)?.label}
-        </h2>
+        <Menu
+          mode="inline"
+          selectedKeys={[sub]}
+          onClick={({ key }) => setSub(key as SubPage)}
+          items={items}
+          style={{ background: 'transparent', border: 'none' }}
+        />
+      </Sider>
+      <Content style={{ overflow: 'auto', padding: 24 }}>
+        <Title level={5} style={{ marginBottom: 16, color: 'var(--text-primary)' }}>
+          Settings / {items.find(x => x.key === sub)?.label}
+        </Title>
         {sub === 'agent' && <AgentSettings />}
         {sub === 'agents' && <AgentManager />}
         {sub === 'backends' && <BackendManager />}
         {sub === 'import-export' && <ImportExport />}
-      </div>
-    </>
+      </Content>
+    </Layout>
   );
 }

@@ -1,96 +1,94 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Card, Select, InputNumber, Input, Statistic, Row, Col, message, Space, Form } from 'antd';
 import { getConfig, updateConfig } from '../../lib/api';
 import type { Config } from '../../lib/types';
 
 export default function AgentSettings() {
   const [cfg, setCfg] = useState<Config | null>(null);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
+  const [form] = Form.useForm();
 
   const load = useCallback(() => {
-    getConfig().then(setCfg).catch(() => {}).finally(() => setLoading(false));
-  }, []);
+    getConfig().then(c => {
+      setCfg(c);
+      form.setFieldsValue(c);
+    }).catch(() => {}).finally(() => setLoading(false));
+  }, [form]);
 
   useEffect(() => { load(); }, [load]);
 
-  const save = async (updates: Record<string, unknown>) => {
-    setMsg('');
+  const saveField = async (field: string, value: any) => {
     try {
-      await updateConfig(updates);
-      setMsg('✅ Saved');
-      setTimeout(() => setMsg(''), 2000);
-      load();
+      await updateConfig({ [field]: value });
+      message.success({ content: 'Saved', key: field, duration: 1 });
     } catch (e: any) {
-      setMsg(`❌ ${e.message}`);
+      message.error(e.message);
     }
   };
 
-  if (loading) return <div className="p-4 text-sm text-[#8b949e]">Loading...</div>;
-  if (!cfg) return <div className="p-4 text-sm text-red-400">Could not load config.</div>;
-
-  const Field = ({ label, value, onChange, type = 'text', rows }: { label: string; value: string | number; onChange: (v: string) => void; type?: string; rows?: number }) => (
-    <div className="mb-3">
-      <label className="block text-xs text-[#8b949e] mb-1">{label}</label>
-      {rows ? (
-        <textarea value={value} onChange={e => onChange(e.target.value)} rows={rows}
-          className="w-full bg-[#0d1117] border border-[#30363d] rounded px-3 py-2 text-xs text-[#e6edf3] font-mono resize-y" />
-      ) : (
-        <input type={type} value={value} onChange={e => onChange(e.target.value)}
-          className="w-full bg-[#0d1117] border border-[#30363d] rounded px-3 py-2 text-xs text-[#e6edf3] font-mono" />
-      )}
-    </div>
-  );
-
-  const Select = ({ label, value, options, onChange }: { label: string; value: string; options: string[]; onChange: (v: string) => void }) => (
-    <div className="mb-3">
-      <label className="block text-xs text-[#8b949e] mb-1">{label}</label>
-      <select value={value} onChange={e => onChange(e.target.value)}
-        className="w-full bg-[#0d1117] border border-[#30363d] rounded px-3 py-2 text-xs text-[#e6edf3]">
-        {options.map(o => <option key={o} value={o}>{o}</option>)}
-      </select>
-    </div>
-  );
+  if (loading) return <Card loading style={{ maxWidth: 680 }} />;
+  if (!cfg) return <Card style={{ maxWidth: 680 }}><span style={{ color: 'var(--red)' }}>Could not load config.</span></Card>;
 
   return (
-    <div className="overflow-auto max-h-full">
-      <div className="p-5 space-y-2">
-        <div className="flex items-center justify-between mb-4">
-          <h2 className="text-sm font-semibold text-[#e6edf3]">🤖 Agent Settings</h2>
-          {msg && <span className={`text-xs ${msg.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>{msg}</span>}
-        </div>
+    <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Form form={form} layout="horizontal" labelCol={{ span: 5 }} wrapperCol={{ span: 19 }} labelAlign="left" size="small">
 
-        <Select label="Provider" value={cfg.provider}
-          options={['openai', 'anthropic', 'ollama']}
-          onChange={v => save({ provider: v })} />
+        <Card title="Provider & Model" size="small">
+          <Form.Item label="Provider" name="provider">
+            <Select onChange={v => saveField('provider', v)} options={[
+              { value: 'openai', label: 'OpenAI' }, { value: 'anthropic', label: 'Anthropic' },
+              { value: 'ollama', label: 'Ollama' }, { value: 'custom', label: 'Custom' },
+            ]} />
+          </Form.Item>
+          <Form.Item label="Model" name="model">
+            <Input onBlur={e => saveField('model', e.target.value)} />
+          </Form.Item>
+          <Form.Item label="Base URL" name="base_url">
+            <Input onBlur={e => saveField('base_url', e.target.value)} placeholder="https://api.openai.com/v1" />
+          </Form.Item>
+        </Card>
 
-        <Field label="Model" value={cfg.model}
-          onChange={v => save({ model: v })} />
+        <Card title="Behavior" size="small">
+          <Form.Item label="Reasoning" name="reasoning_effort">
+            <Select onChange={v => saveField('reasoning_effort', v)} options={[
+              { value: 'low', label: 'Low' }, { value: 'medium', label: 'Medium' },
+              { value: 'high', label: 'High' }, { value: 'xhigh', label: 'X-High' },
+            ]} />
+          </Form.Item>
+          <Form.Item label="Max Turns" name="max_turns">
+            <InputNumber min={1} max={200} onChange={v => saveField('max_turns', v)} style={{ width: 120 }} />
+          </Form.Item>
+          <Form.Item label="Pool Strategy" name="pool_strategy">
+            <Select onChange={v => saveField('pool_strategy', v)} options={[
+              { value: 'round_robin', label: 'Round Robin' },
+              { value: 'random', label: 'Random' },
+              { value: 'fill_first', label: 'Fill First' },
+            ]} />
+          </Form.Item>
+          <Form.Item label="Wire API" name="wire_api">
+            <Select onChange={v => saveField('wire_api', v)} options={[
+              { value: 'chat_completions', label: 'Chat Completions' },
+              { value: 'responses', label: 'Responses' },
+            ]} />
+          </Form.Item>
+        </Card>
 
-        <Field label="Base URL" value={cfg.base_url}
-          onChange={v => save({ base_url: v })} />
+        <Card title="System Prompt" size="small">
+          <Form.Item name="system_prompt" style={{ marginBottom: 0 }}>
+            <Input.TextArea rows={5} onBlur={e => saveField('system_prompt', e.target.value)}
+              style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} />
+          </Form.Item>
+        </Card>
 
-        <Select label="Reasoning Effort" value={cfg.reasoning_effort}
-          options={['low', 'medium', 'high', 'xhigh']}
-          onChange={v => save({ reasoning_effort: v })} />
+        <Card title="Status" size="small">
+          <Row gutter={32}>
+            <Col><Statistic title="Tools" value={cfg.tool_count} valueStyle={{ color: '#5e6ad2', fontSize: 20 }} /></Col>
+            <Col><Statistic title="Sessions" value={cfg.active_sessions} valueStyle={{ color: '#5e6ad2', fontSize: 20 }} /></Col>
+            <Col><Statistic title="Backends" value={cfg.backend_count} valueStyle={{ color: '#5e6ad2', fontSize: 20 }} /></Col>
+          </Row>
+        </Card>
 
-        <Field label="Max Turns" value={cfg.max_turns} type="number"
-          onChange={v => save({ max_turns: parseInt(v) || 30 })} />
-
-        <Select label="Pool Strategy" value={cfg.pool_strategy || 'round_robin'}
-          options={['round_robin', 'random', 'fill_first']}
-          onChange={v => save({ pool_strategy: v })} />
-
-        <Select label="Wire API" value={cfg.wire_api || 'chat_completions'}
-          options={['chat_completions', 'responses']}
-          onChange={v => save({ wire_api: v })} />
-
-        <Field label="System Prompt" value={cfg.system_prompt || ''} rows={4}
-          onChange={v => save({ system_prompt: v })} />
-
-        <div className="text-[10px] text-[#8b949e] pt-2 border-t border-[#21262d] mt-4">
-          Tools: {cfg.tool_count} · Active sessions: {cfg.active_sessions} · Backends: {cfg.backend_count}
-        </div>
-      </div>
+      </Form>
     </div>
   );
 }

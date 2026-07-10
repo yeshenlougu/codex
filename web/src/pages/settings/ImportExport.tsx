@@ -1,68 +1,56 @@
 import { useState, useRef } from 'react';
+import { Card, Button, Upload, Space, message } from 'antd';
+import { UploadOutlined, DownloadOutlined } from '@ant-design/icons';
 import { importBackendsFile, getBackendsExportUrl } from '../../lib/api';
 import type { ImportResult } from '../../lib/types';
 
 export default function ImportExport() {
-  const [msg, setMsg] = useState('');
   const [result, setResult] = useState<ImportResult | null>(null);
-  const fileRef = useRef<HTMLInputElement>(null);
 
-  const doImport = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-    setMsg('⏳ Importing...');
+  const doImport = async (file: File) => {
+    message.loading({ content: 'Importing...', key: 'import' });
     try {
       const res = await importBackendsFile(file);
       setResult(res);
-      setMsg(`✅ Imported ${res.count} backends`);
+      message.success({ content: `Imported ${res.count} backends`, key: 'import' });
     } catch (err: any) {
-      setMsg(`❌ ${err.message}`);
+      message.error({ content: err.message, key: 'import' });
       setResult(null);
     }
+    return false; // prevent auto-upload
   };
 
   return (
-    <div className="overflow-auto max-h-full">
-      <div className="p-5 space-y-4">
-        <h2 className="text-sm font-semibold text-[#e6edf3]">📦 Import / Export</h2>
+    <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      <Card title="Import cc-switch Config" size="small">
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Upload .yaml, .json, or .sql (SQLite dump). Backends will merge into current config.
+        </p>
+        <Upload accept=".yaml,.yml,.json,.sql,.db" maxCount={1}
+          beforeUpload={doImport} showUploadList={false}>
+          <Button icon={<UploadOutlined />}>Choose File</Button>
+        </Upload>
+      </Card>
 
-        {msg && <div className={`text-xs ${msg.startsWith('✅') ? 'text-green-400' : msg.startsWith('⏳') ? 'text-blue-400' : 'text-red-400'}`}>{msg}</div>}
+      {result && (
+        <Card title={`✅ ${result.count} backends imported`} size="small" style={{ borderColor: 'var(--green)' }}>
+          <p style={{ fontSize: 12, color: 'var(--text-muted)' }}>Strategy: {result.strategy}</p>
+          {result.backends.slice(0, 10).map(b => (
+            <div key={b.label} style={{ fontSize: 11, color: 'var(--accent)', fontFamily: 'monospace' }}>
+              {b.label} → {b.base_url}
+            </div>
+          ))}
+        </Card>
+      )}
 
-        {/* Import */}
-        <div className="bg-[#161b22] border border-[#30363d] rounded p-4">
-          <h3 className="text-xs font-semibold text-[#e6edf3] mb-2">Import cc-switch Config</h3>
-          <p className="text-[10px] text-[#8b949e] mb-3">
-            Upload .yaml, .json, or .sql (SQLite dump) — backends will be merged into current config.
-          </p>
-          <input ref={fileRef} type="file" accept=".yaml,.yml,.json,.sql,.db"
-            onChange={doImport}
-            className="block w-full text-xs text-[#8b949e] file:mr-2 file:py-1 file:px-3 file:text-xs file:rounded file:border-0 file:bg-[#238636] file:text-white hover:file:bg-[#2ea043]" />
-        </div>
-
-        {result && (
-          <div className="bg-[#161b22] border border-[#30363d] rounded p-3">
-            <div className="text-xs text-[#e6edf3] mb-1">{result.count} backends imported</div>
-            <div className="text-[10px] text-[#8b949e]">Strategy: {result.strategy}</div>
-            {result.backends.slice(0, 5).map(b => (
-              <div key={b.label} className="text-[10px] text-[#58a6ff] mt-1 truncate">
-                {b.label} → {b.base_url}
-              </div>
-            ))}
-          </div>
-        )}
-
-        {/* Export */}
-        <div className="bg-[#161b22] border border-[#30363d] rounded p-4">
-          <h3 className="text-xs font-semibold text-[#e6edf3] mb-2">Export Config</h3>
-          <p className="text-[10px] text-[#8b949e] mb-3">
-            Download current backends as cc-switch YAML format.
-          </p>
-          <a href={getBackendsExportUrl()} download="cc-switch-export.yaml"
-            className="inline-block px-3 py-1 text-xs bg-[#21262d] hover:bg-[#30363d] text-[#58a6ff] rounded">
-            ⬇ Download YAML
-          </a>
-        </div>
-      </div>
+      <Card title="Export Config" size="small">
+        <p style={{ fontSize: 12, color: 'var(--text-muted)', marginBottom: 12 }}>
+          Download current backends in cc-switch YAML format.
+        </p>
+        <a href={getBackendsExportUrl()} download="cc-switch-export.yaml">
+          <Button icon={<DownloadOutlined />}>Download YAML</Button>
+        </a>
+      </Card>
     </div>
   );
 }

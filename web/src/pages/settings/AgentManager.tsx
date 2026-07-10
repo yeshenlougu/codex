@@ -1,16 +1,16 @@
 import { useState, useEffect, useCallback } from 'react';
+import { Card, Button, Input, Tag, Space, message, Popconfirm, Modal } from 'antd';
+import { PlusOutlined, CopyOutlined, EditOutlined, DeleteOutlined, CheckOutlined, CloseOutlined } from '@ant-design/icons';
 import { listAgents, createAgent, deleteAgent, cloneAgent, updateAgent } from '../../lib/api';
 import type { AgentProfile } from '../../lib/types';
-import { Plus, Trash2, Copy, Edit3, X, Check } from 'lucide-react';
 
 export default function AgentManager() {
   const [agents, setAgents] = useState<AgentProfile[]>([]);
   const [loading, setLoading] = useState(true);
-  const [msg, setMsg] = useState('');
-  const [editing, setEditing] = useState<string | null>(null);
-  const [editPrompt, setEditPrompt] = useState('');
   const [newName, setNewName] = useState('');
   const [cloneTarget, setCloneTarget] = useState('');
+  const [editing, setEditing] = useState<string | null>(null);
+  const [editPrompt, setEditPrompt] = useState('');
 
   const load = useCallback(() => {
     setLoading(true);
@@ -21,169 +21,105 @@ export default function AgentManager() {
   useEffect(() => { load(); }, [load]);
 
   const handleCreate = async () => {
-    if (!newName.trim()) { setMsg('❌ Name required'); return; }
-    try {
-      await createAgent(newName.trim());
-      setMsg('✅ Created');
-      setNewName('');
-      setTimeout(() => setMsg(''), 2000);
-      load();
-    } catch (e: any) { setMsg(`❌ ${e.message}`); }
+    if (!newName.trim()) { message.warning('Name required'); return; }
+    try { await createAgent(newName.trim()); message.success('Created'); setNewName(''); load(); }
+    catch (e: any) { message.error(e.message); }
   };
 
   const handleDelete = async (name: string) => {
-    if (!confirm(`Delete agent "${name}"?`)) return;
-    try {
-      await deleteAgent(name);
-      setMsg('✅ Deleted');
-      setTimeout(() => setMsg(''), 2000);
-      load();
-    } catch (e: any) { setMsg(`❌ ${e.message}`); }
+    try { await deleteAgent(name); message.success('Deleted'); load(); }
+    catch (e: any) { message.error(e.message); }
   };
 
   const handleClone = async (sourceName: string) => {
     const name = cloneTarget || `${sourceName}-clone`;
-    try {
-      await cloneAgent(sourceName, name);
-      setMsg(`✅ Cloned to "${name}"`);
-      setCloneTarget('');
-      setTimeout(() => setMsg(''), 2000);
-      load();
-    } catch (e: any) { setMsg(`❌ ${e.message}`); }
+    try { await cloneAgent(sourceName, name); message.success(`Cloned → "${name}"`); setCloneTarget(''); load(); }
+    catch (e: any) { message.error(e.message); }
   };
 
-  const startEdit = (agent: AgentProfile) => {
-    setEditing(agent.name);
-    setEditPrompt(agent.agent?.system_prompt || '');
-  };
-
+  const startEdit = (agent: AgentProfile) => { setEditing(agent.name); setEditPrompt(agent.agent?.system_prompt || ''); };
   const saveEdit = async (name: string) => {
-    try {
-      await updateAgent(name, { agent: { max_turns: 0, system_prompt: editPrompt } } as any);
-      setMsg('✅ Updated');
-      setEditing(null);
-      setTimeout(() => setMsg(''), 2000);
-      load();
-    } catch (e: any) { setMsg(`❌ ${e.message}`); }
+    try { await updateAgent(name, { agent: { max_turns: 0, system_prompt: editPrompt } } as any); message.success('Updated'); setEditing(null); load(); }
+    catch (e: any) { message.error(e.message); }
   };
 
-  if (loading) return <div className="p-4 text-sm text-[#8b949e]">Loading agents...</div>;
+  if (loading) return <Card loading style={{ maxWidth: 680 }} />;
 
   return (
-    <div className="overflow-auto max-h-full">
-      <div className="p-5 space-y-4">
-        <div className="flex items-center justify-between">
-          <h2 className="text-sm font-semibold text-[#e6edf3]">🤖 Agent Manager</h2>
-          {msg && <span className={`text-xs ${msg.startsWith('✅') ? 'text-green-400' : 'text-red-400'}`}>{msg}</span>}
-        </div>
+    <div style={{ maxWidth: 680, display: 'flex', flexDirection: 'column', gap: 16 }}>
+      {/* Create */}
+      <Card title="Create Agent" size="small">
+        <Space.Compact style={{ width: '100%' }}>
+          <Input value={newName} onChange={e => setNewName(e.target.value)}
+            onPressEnter={handleCreate} placeholder="Agent name, e.g. python-expert" />
+          <Button type="primary" icon={<PlusOutlined />} onClick={handleCreate}>Create</Button>
+        </Space.Compact>
+        <div style={{ fontSize: 11, color: 'var(--text-muted)', marginTop: 6 }}>New agents clone from the built-in default.</div>
+      </Card>
 
-        {/* Create new agent */}
-        <div className="flex gap-2">
-          <input
-            value={newName}
-            onChange={e => setNewName(e.target.value)}
-            onKeyDown={e => e.key === 'Enter' && handleCreate()}
-            placeholder="New agent name (e.g. python-expert)"
-            className="flex-1 bg-[#0d1117] border border-[#30363d] rounded px-3 py-2 text-xs text-[#e6edf3] font-mono"
-          />
-          <button onClick={handleCreate} className="px-3 py-2 bg-[#238636] text-white text-xs rounded hover:bg-[#2ea043] flex items-center gap-1">
-            <Plus size={12} /> Create
-          </button>
-        </div>
+      {/* Clone target */}
+      <Card title="Clone Name" size="small">
+        <Input value={cloneTarget} onChange={e => setCloneTarget(e.target.value)}
+          placeholder="Leave blank for auto-name (agent-clone)" />
+      </Card>
 
-        <div className="text-[10px] text-[#8b949e]">
-          New agents are cloned from the built-in default. Edit them to add custom skills, MCP servers, and system prompts.
-        </div>
-
-        {/* Clone target name */}
-        <div className="flex gap-2 items-center">
-          <input
-            value={cloneTarget}
-            onChange={e => setCloneTarget(e.target.value)}
-            placeholder="Clone as... (leave blank to auto-name)"
-            className="flex-1 bg-[#0d1117] border border-[#30363d] rounded px-2 py-1.5 text-xs text-[#e6edf3] font-mono"
-          />
-        </div>
-
-        {/* Agent list */}
-        <div className="space-y-2">
-          {agents.length === 0 ? (
-            <div className="text-sm text-[#8b949e] py-4 text-center">No agents yet. Create one above.</div>
-          ) : (
-            agents.map(agent => (
-              <div key={agent.name} className={`bg-[#0d1117] border ${agent.is_builtin ? 'border-[#30363d]' : 'border-[#238636]'} rounded-lg p-3`}>
-                <div className="flex items-center justify-between mb-2">
-                  <div className="flex items-center gap-2">
-                    <span className="text-lg">{agent.avatar || '🤖'}</span>
-                    <div>
-                      <span className="text-sm font-semibold text-[#e6edf3]">{agent.name}</span>
-                      {agent.is_builtin && <span className="ml-2 text-[10px] bg-[#21262d] text-[#8b949e] px-1.5 py-0.5 rounded">built-in</span>}
-                      {!agent.is_builtin && <span className="ml-2 text-[10px] bg-[#1a3a2a] text-[#3fb950] px-1.5 py-0.5 rounded">custom</span>}
-                    </div>
-                  </div>
-                  <div className="flex items-center gap-1">
-                    {!agent.is_builtin && (
-                      <>
-                        <button onClick={() => startEdit(agent)} className="p-1.5 text-[#8b949e] hover:text-[#e6edf3] rounded" title="Edit system prompt">
-                          <Edit3 size={12} />
-                        </button>
-                        <button onClick={() => handleDelete(agent.name)} className="p-1.5 text-[#8b949e] hover:text-red-400 rounded" title="Delete agent">
-                          <Trash2 size={12} />
-                        </button>
-                      </>
-                    )}
-                    <button onClick={() => handleClone(agent.name)} className="p-1.5 text-[#8b949e] hover:text-[#e6edf3] rounded" title="Clone agent">
-                      <Copy size={12} />
-                    </button>
-                  </div>
-                </div>
-
-                <div className="text-xs text-[#8b949e] mb-1">{agent.description || 'No description'}</div>
-
-                <div className="flex gap-2 flex-wrap text-[10px]">
-                  <span className="bg-[#21262d] text-[#e6edf3] px-1.5 py-0.5 rounded">
-                    {agent.model?.provider || 'openai'} / {agent.model?.model || 'gpt-4o'}
-                  </span>
-                  <span className="bg-[#21262d] text-[#e6edf3] px-1.5 py-0.5 rounded">
-                    max {agent.agent?.max_turns || 60} turns
-                  </span>
-                  {agent.mcp?.servers && agent.mcp.servers.length > 0 && (
-                    <span className="bg-[#21262d] text-[#f0883e] px-1.5 py-0.5 rounded">
-                      {agent.mcp.servers.length} MCP
-                    </span>
-                  )}
-                  {agent.skills?.dirs && agent.skills.dirs.length > 0 && (
-                    <span className="bg-[#21262d] text-[#a371f7] px-1.5 py-0.5 rounded">
-                      {agent.skills.dirs.length} skill dirs
-                    </span>
-                  )}
-                </div>
-
-                {/* Inline editor for system prompt */}
-                {editing === agent.name && (
-                  <div className="mt-3 border-t border-[#30363d] pt-3">
-                    <label className="block text-[10px] text-[#8b949e] mb-1">System Prompt</label>
-                    <textarea
-                      value={editPrompt}
-                      onChange={e => setEditPrompt(e.target.value)}
-                      rows={4}
-                      className="w-full bg-[#0d1117] border border-[#30363d] rounded px-3 py-2 text-xs text-[#e6edf3] font-mono resize-y mb-2"
-                    />
-                    <div className="flex gap-2">
-                      <button onClick={() => saveEdit(agent.name)} className="px-2 py-1 bg-[#238636] text-white text-xs rounded flex items-center gap-1">
-                        <Check size={10} /> Save
-                      </button>
-                      <button onClick={() => setEditing(null)} className="px-2 py-1 bg-[#21262d] text-[#8b949e] text-xs rounded flex items-center gap-1">
-                        <X size={10} /> Cancel
-                      </button>
-                    </div>
-                  </div>
+      {/* Agent list */}
+      {agents.length === 0 ? (
+        <Card size="small"><div style={{ textAlign: 'center', color: 'var(--text-muted)', padding: 16 }}>No agents yet. Create one above.</div></Card>
+      ) : (
+        agents.map(agent => (
+          <Card
+            key={agent.name}
+            size="small"
+            title={
+              <Space>
+                <span style={{ fontSize: 16 }}>{agent.avatar || '🤖'}</span>
+                <span style={{ fontWeight: 600 }}>{agent.name}</span>
+                <Tag color={agent.is_builtin ? 'default' : 'green'}>{agent.is_builtin ? 'built-in' : 'custom'}</Tag>
+              </Space>
+            }
+            extra={
+              <Space>
+                {!agent.is_builtin && (
+                  <>
+                    <Button size="small" type="text" icon={<EditOutlined />} onClick={() => startEdit(agent)} />
+                    <Popconfirm title={`Delete "${agent.name}"?`} onConfirm={() => handleDelete(agent.name)}>
+                      <Button size="small" type="text" danger icon={<DeleteOutlined />} />
+                    </Popconfirm>
+                  </>
                 )}
+                <Button size="small" type="text" icon={<CopyOutlined />} onClick={() => handleClone(agent.name)} />
+              </Space>
+            }
+          >
+            <p style={{ fontSize: 12, color: 'var(--text-tertiary)', marginBottom: 8 }}>
+              {agent.description || 'No description'}
+            </p>
+            <Space wrap size={[4, 4]}>
+              <Tag>{agent.model?.provider || 'openai'} / {agent.model?.model || 'gpt-4o'}</Tag>
+              <Tag>max {agent.agent?.max_turns || 60} turns</Tag>
+              {agent.mcp?.servers && agent.mcp.servers.length > 0 && (
+                <Tag color="orange">{agent.mcp.servers.length} MCP</Tag>
+              )}
+              {agent.skills?.dirs && agent.skills.dirs.length > 0 && (
+                <Tag color="purple">{agent.skills.dirs.length} skills</Tag>
+              )}
+            </Space>
+
+            {editing === agent.name && (
+              <div style={{ marginTop: 12, paddingTop: 12, borderTop: '1px solid var(--border)' }}>
+                <div style={{ fontSize: 12, fontWeight: 500, marginBottom: 4 }}>System Prompt</div>
+                <Input.TextArea rows={4} value={editPrompt} onChange={e => setEditPrompt(e.target.value)}
+                  style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 12 }} />
+                <Space style={{ marginTop: 8 }}>
+                  <Button size="small" type="primary" icon={<CheckOutlined />} onClick={() => saveEdit(agent.name)}>Save</Button>
+                  <Button size="small" icon={<CloseOutlined />} onClick={() => setEditing(null)}>Cancel</Button>
+                </Space>
               </div>
-            ))
-          )}
-        </div>
-      </div>
+            )}
+          </Card>
+        ))
+      )}
     </div>
   );
 }
