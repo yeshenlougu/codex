@@ -82,11 +82,15 @@ desktop: web build-all
 	@echo "🔧 Building NSIS installer..."
 	@cp installer.nsi $(DESKTOP_DIR)/installer.nsi
 	@cd $(DESKTOP_DIR) && makensis installer.nsi 2>&1 | tail -3
+	@# Build Linux .deb
+	@echo "🔧 Building Linux .deb..."
+	@cd $(DESKTOP_SRC) && npx electron-builder --linux deb --x64 2>&1 | tail -3
+	@cp $(DESKTOP_SRC)/release/codex-desktop_*.deb $(DESKTOP_DIR)/ 2>/dev/null || true
 	@# Cleanup intermediates
 	@rm -rf $(DESKTOP_SRC)/codex-go.exe $(DESKTOP_SRC)/release $(DESKTOP_DIR)/installer.nsi
 	@echo ""
 	@echo "✅ Desktop packages:"
-	@ls -lh $(DESKTOP_DIR)/codex-go-windows-portable.tar.gz $(DESKTOP_DIR)/Codex-Go-Setup-*.exe 2>/dev/null
+	@ls -lh $(DESKTOP_DIR)/*.deb $(DESKTOP_DIR)/codex-go-windows-portable.tar.gz $(DESKTOP_DIR)/Codex-Go-Setup-*.exe 2>/dev/null
 
 # Linux desktop: .deb + AppImage + tar.gz
 desktop-linux: web
