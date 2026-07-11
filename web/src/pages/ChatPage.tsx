@@ -146,9 +146,17 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
 
   // Send a single steer step from queue
   const sendSteerStep = useCallback(async (item: QueuedItem, step: string) => {
-    const prefix = step === 'spec' ? '/spec ' : step === 'plan' ? '/plan ' : step === 'tasks' ? '/tasks ' : '/implement ';
+    let cmd: string;
+    switch (step) {
+      case 'spec': cmd = '/spec ' + item.content; break;
+      case 'plan': cmd = '/plan'; break;  // no arg — backend auto-discovers spec file
+      case 'tasks': cmd = '/tasks'; break;
+      case 'implement': cmd = '/implement 1'; break;  // default task 1; user can change
+      case 'execute': cmd = '/execute 1'; break;
+      default: cmd = '/' + step + ' ' + item.content;
+    }
     setSending(true);
-    await sendOne(prefix + item.content);
+    await sendOne(cmd);
     setQueue(prev => prev.map(q => q.id === item.id ? {
       ...q, steerSent: { ...q.steerSent, [step]: true }
     } : q));

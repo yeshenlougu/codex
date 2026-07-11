@@ -172,13 +172,39 @@ func (s *Server) handleSlashSpec(w http.ResponseWriter, r *http.Request, req *Ch
 
 func (s *Server) handleSlashPlan(w http.ResponseWriter, r *http.Request, req *ChatRequest, msg string) bool {
 	specFile := strings.TrimSpace(strings.TrimPrefix(msg, "/plan"))
-	if specFile == "" {
+	if specFile == "" || !fileExists(specFile) {
 		specFile = "SPEC.md"
+	}
+	if !fileExists(specFile) {
+		// Auto-discover: find any SPEC-*.md file
+		if found := discoverSpecFile(); found != "" {
+			specFile = found
+		}
 	}
 
 	prompt := fmt.Sprintf(workflow.PlanPromptTemplate, specFile)
 	req.Message = prompt
 	return false // let normal chat processing handle the prompt
+}
+
+// fileExists checks if a file exists on disk.
+func fileExists(path string) bool {
+	_, err := os.Stat(path)
+	return err == nil
+}
+
+// discoverSpecFile finds the first SPEC-*.md file in the current directory.
+func discoverSpecFile() string {
+	entries, err := os.ReadDir(".")
+	if err != nil {
+		return ""
+	}
+	for _, e := range entries {
+		if !e.IsDir() && strings.HasPrefix(e.Name(), "SPEC-") && strings.HasSuffix(e.Name(), ".md") {
+			return e.Name()
+		}
+	}
+	return ""
 }
 
 func (s *Server) handleSlashTasks(w http.ResponseWriter) {
