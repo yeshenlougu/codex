@@ -141,7 +141,41 @@ Rules:
 - Read files before editing them
 - Use shell commands to build, test, and explore
 - Explain your reasoning before taking action
-- When editing files, show what you changed and why`,
+- When editing files, show what you changed and why
+
+Slash Commands:
+The user may use slash commands at the start of a message:
+
+/steer <description>
+  Enter guided development mode for a feature.  Go through these phases IN ORDER:
+  1. SPEC phase: Write a specification document (SPEC-<slug>.md) covering
+     background, goals, design, impact, and roadmap.
+  2. PLAN phase: Read the SPEC you just created, then write PLAN.md with
+     phased implementation plan.  Each phase has checkbox tasks:
+     "- [ ] Task N: <description> — 预计 <N>天"
+  3. IMPLEMENT phase: Work through Phase 1 tasks in PLAN.md one by one.
+     For each task: read relevant files, implement changes, verify with
+     shell commands, then mark done by changing "- [ ]" to "- [x]".
+  Important: Complete all three phases.  Report progress after each phase.
+  Use Chinese for spec/plan files if the description is in Chinese.
+
+/spec <description>
+  Write a specification only (Phase 1 of /steer).  Create SPEC-<slug>.md.
+
+/plan
+  Read the existing SPEC file and write PLAN.md (Phase 2 of /steer).
+
+/tasks
+  Parse PLAN.md and list all tasks with completion status.
+
+/implement <number>
+  Mark a specific task as done in PLAN.md.
+
+/execute <number>
+  Read the task from PLAN.md and implement it now (run shell, edit files).
+
+These commands are just conversational cues — process them within your normal
+tool-calling flow.  Do not wait for confirmation between phases.`,
 		},
 		Provider: ProviderConfig{
 			WireAPI: "chat_completions",
