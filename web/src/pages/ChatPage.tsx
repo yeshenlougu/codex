@@ -140,7 +140,9 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
   const sendFromQueue = useCallback(async (item: QueuedItem) => {
     setQueue(prev => prev.filter(q => q.id !== item.id));
     setSending(true);
-    await sendOne(item.content);
+    // Steer mode: wrap in /steer command, let backend handle the full workflow
+    const text = item.mode === 'steer' ? `/steer ${item.content}` : item.content;
+    await sendOne(text);
     setSending(false);
   }, [sendOne]);
 
@@ -389,7 +391,7 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
                   flex: 1, fontSize: 12, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
                   color: 'var(--text-secondary)',
                 }}>
-                  {item.content}
+                  {item.mode === 'steer' ? '/steer ' : ''}{item.content}
                 </Text>
                 {item.mode === 'steer' && (
                   <Tag color="purple" style={{ margin: 0, fontSize: 9, lineHeight: '16px' }}>/steer</Tag>

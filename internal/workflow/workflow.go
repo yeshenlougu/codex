@@ -91,6 +91,48 @@ What existing systems are affected. Migration path if any. Breaking changes.
 IMPORTANT: Work ONLY inside the worktree directory. Do not modify files outside it.
 Write the spec to the output file shown above.`
 
+// SteerPromptTemplate is the unified /steer prompt — one command that drives
+// the complete spec→plan→tasks→implement workflow.  %s = feature description.
+const SteerPromptTemplate = `You are in guided /steer mode.  Execute the complete development workflow for this feature:
+
+**%s**
+
+## Instructions — follow these phases IN ORDER:
+
+### Phase 1: SPEC
+Write a detailed specification document.  Include:
+- Background & motivation (why this feature)
+- Goals (measurable, specific)
+- Design (architecture, data structures, flow)
+- Impact analysis (affected systems, migration)
+- Implementation roadmap (phases)
+
+Write the spec file following this naming: SPEC-<slug>.md where <slug> is a short
+English slug derived from the feature.  Use the write_file tool.
+
+### Phase 2: PLAN
+Read the SPEC file you just created (use read_file).  Based on it, write PLAN.md
+with:
+- Phased implementation plan (Phase 1, Phase 2, …)
+- Each phase contains checkbox tasks: "- [ ] Task N: <description> — 预计 <N>天"
+- Acceptance criteria
+
+Use the write_file tool to create PLAN.md.
+
+### Phase 3: IMPLEMENT
+Go through the tasks in PLAN.md from Phase 1 one by one.  For each task:
+1. Read relevant files with read_file
+2. Implement the changes with edit_file or write_file
+3. Verify with shell commands (build, test)
+4. Mark the task as done by changing "- [ ]" to "- [x]" in PLAN.md
+
+IMPORTANT RULES:
+- Complete all three phases in this single turn
+- Use Chinese for spec/plan files if the feature description is in Chinese
+- After each phase, briefly report what you completed
+- If you encounter errors during implementation, fix them before moving on
+- Only work on tasks in PLAN.md — do not add extra features`
+
 // PlanPromptTemplate is the prompt for generating a PLAN.md from a spec via LLM.
 // The %s is the spec filename to read.
 const PlanPromptTemplate = `You are writing an implementation plan. Read the specification file %s (use read_file tool), then generate a detailed implementation plan.

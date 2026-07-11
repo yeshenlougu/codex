@@ -122,6 +122,9 @@ func (s *Server) interceptSlashCommand(w http.ResponseWriter, r *http.Request, r
 
 	case strings.HasPrefix(msg, "/implement"):
 		return s.handleSlashImplement(w, msg)
+
+	case strings.HasPrefix(msg, "/steer"):
+		return s.handleSlashSteer(w, r, req, msg)
 	}
 	return false
 }
@@ -267,6 +270,39 @@ func (s *Server) handleSlashImplement(w http.ResponseWriter, msg string) bool {
 		"content": fmt.Sprintf("✅ Task %d marked as done: %s", taskNum, content),
 	})
 	return true
+}
+
+// handleSlashSteer implements the unified /steer command — one message that
+// drives the agent through spec→plan→tasks→implement in a single turn.
+func (s *Server) handleSlashSteer(w http.ResponseWriter, r *http.Request, req *ChatRequest, msg string) bool {
+	desc := strings.TrimSpace(strings.TrimPrefix(msg, "/steer"))
+	if desc == "" {
+		writeJSON(w, http.StatusOK, ChatResponse{
+			SessionID: req.SessionID,
+			Content:   "Usage: /steer <feature description>\nExample: /steer 添加实时通知系统\n\nThe agent will run through spec → plan → implement in one turn.",
+		})
+		return true
+	}
+
+	// Try to create a git worktree for isolated development
+	slug := workflow.Slugify(desc)
+	worktreePath := filepath.Join("..", slug)
+	worktreeCreated := false
+	if out, err := exec.CommandContext(context.Background(), "git", "worktree", "add", "-b", slug, worktreePath).CombinedOutput(); err == nil {
+		worktreeCreated = true
+		log.Printf("[steer] worktree created: %s (branch: %s)", worktreePath, slug)
+		_ = out
+	}
+
+	// Build the steer prompt
+	prompt := fmt.Sprintf(workflow.SteerPromptTemplate, desc)
+	if worktreeCreated {
+		prompt = fmt.Sprintf("Working directory: %s\n\n%s", worktreePath, prompt)
+	}
+
+	// Replace the message — let normal streaming chat handle execution
+	req.Message = prompt
+	return false
 }
 
 func (s *Server) handleStreamingChat(w http.ResponseWriter, r *http.Request, ag *agent.Agent, message string) {
