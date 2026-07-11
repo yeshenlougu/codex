@@ -1,7 +1,6 @@
 package sandbox
 
 import (
-	"fmt"
 	"os"
 	"os/exec"
 	"path/filepath"
@@ -22,8 +21,18 @@ var (
 	DefaultLevel  = ApprovalSafe
 	pendingMu     sync.Mutex
 	pendingID     int
-	pendingChecks = make(map[int]chan bool)
+	pendingChecks = make(map[int]*pendingCheck)
+
+	// OnApprovalRequested is called (with the check data) when a tool
+	// requires user approval.  Set this callback to broadcast the check
+	// to the frontend via WebSocket.
+	OnApprovalRequested func(check Check)
 )
+
+type pendingCheck struct {
+	Check   Check
+	Approve chan bool
+}
 
 // Check is an approval request.
 type Check struct {
@@ -89,8 +98,11 @@ func RiskLevel(toolName, args string) string {
 	return "warning"
 }
 
-// RequestApproval blocks until the user approves or rejects.
-// This is called before executing a tool.
+// RequestApproval blocks until the user approves or rejects via the API.
+// This is called before executing a tool.  When approval is required, the
+// check is stored and OnApprovalRequested (if set) is called so the API can
+// broadcast it to the frontend.  The goroutine then blocks until the API
+// resolves the check via ApproveCheck().
 func RequestApproval(check Check) bool {
 	if DefaultLevel == ApprovalNone {
 		return true
@@ -102,25 +114,51 @@ func RequestApproval(check Check) bool {
 	pendingMu.Lock()
 	pendingID++
 	id := pendingID
-	ch := make(chan bool, 1)
-	pendingChecks[id] = ch
+	check.ID = id
+	pc := &pendingCheck{
+		Check:   check,
+		Approve: make(chan bool, 1),
+	}
+	pendingChecks[id] = pc
 	pendingMu.Unlock()
 
-	// TODO: send check to API/WebSocket for frontend notification
-	fmt.Printf("\n[APPROVAL #%d] %s (%s): %s\n", id, check.Tool, check.Risk, check.Description)
-	fmt.Printf("  Args: %s\n", check.Args)
-	fmt.Print("Approve? [y/N]: ")
+	// Notify the API layer so it can push to WebSocket.
+	if OnApprovalRequested != nil {
+		OnApprovalRequested(check)
+	}
 
-	var response string
-	fmt.Scanln(&response)
-	result := strings.ToLower(strings.TrimSpace(response)) == "y"
+	// Wait for the API to resolve.
+	result := <-pc.Approve
 
 	pendingMu.Lock()
 	delete(pendingChecks, id)
 	pendingMu.Unlock()
 
-	ch <- result
 	return result
+}
+
+// ApproveCheck resolves a pending approval check by ID.
+// Returns false if the check ID was not found.
+func ApproveCheck(id int, approved bool) bool {
+	pendingMu.Lock()
+	pc, ok := pendingChecks[id]
+	pendingMu.Unlock()
+
+	if !ok {
+		return false
+	}
+	pc.Approve <- approved
+	return true
+}
+
+// GetPendingCheck returns the pending Check by ID, or nil if not found.
+func GetPendingCheck(id int) *Check {
+	pendingMu.Lock()
+	defer pendingMu.Unlock()
+	if pc, ok := pendingChecks[id]; ok {
+		return &pc.Check
+	}
+	return nil
 }
 
 // SandboxConfig controls execution isolation.
@@ -206,15 +244,14 @@ func WrapCommand(cfg SandboxConfig, cmd string, args []string) *exec.Cmd {
 	return exec.Command("bwrap", bwrapArgs...)
 }
 
-// PendingChecks returns list of approval checks awaiting user action.
+// PendingChecks returns all approval checks awaiting user action.
 func PendingChecks() []Check {
 	pendingMu.Lock()
 	defer pendingMu.Unlock()
 
-	var checks []Check
-	for id := range pendingChecks {
-		// In real implementation, store check data
-		checks = append(checks, Check{ID: id, Description: "pending"})
+	checks := make([]Check, 0, len(pendingChecks))
+	for _, pc := range pendingChecks {
+		checks = append(checks, pc.Check)
 	}
 	return checks
 }

@@ -13,6 +13,7 @@ import (
 
 	"github.com/yeshenlougu/codex/internal/agent"
 	"github.com/yeshenlougu/codex/internal/config"
+	"github.com/yeshenlougu/codex/internal/sandbox"
 	"github.com/yeshenlougu/codex/internal/session"
 )
 
@@ -51,6 +52,15 @@ func (s *Server) Start() error {
 	}
 	s.manager = agent.NewManager(s.cfg, s.store, agRegistry)
 	log.Printf("[api] agent manager ready — %d profiles loaded", len(agRegistry.List()))
+
+	// Wire sandbox approval to WebSocket broadcast
+	sandbox.OnApprovalRequested = func(check sandbox.Check) {
+		data, _ := json.Marshal(check)
+		s.wsHub.broadcastMsg(wsMessage{
+			Type:    "approval_request",
+			Content: string(data),
+		})
+	}
 
 	mux := http.NewServeMux()
 
@@ -110,6 +120,14 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/tasks", cors(s.handleListTasks))
 	mux.HandleFunc("/api/implement/", cors(s.handleImplementTask))
 	mux.HandleFunc("/api/implement", cors(s.handleImplementTask))
+
+	// Task execution (actual agent-driven implementation)
+	mux.HandleFunc("/api/execute/", cors(s.handleExecuteTask))
+	mux.HandleFunc("/api/execute", cors(s.handleExecuteTask))
+
+	// Sandbox approval (resolve pending checks)
+	mux.HandleFunc("/api/approve/", cors(s.handleApprove))
+	mux.HandleFunc("/api/approve", cors(s.handleApprove))
 
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)

@@ -165,6 +165,60 @@ export async function implementTask(taskNum: number): Promise<{ content: string 
   return req(`/implement/${taskNum}`, { method: 'POST' });
 }
 
+// executeTask runs a task from PLAN.md through the agent with SSE streaming.
+// Returns SSE reader + the fetch response for abort.
+export async function executeTask(
+  taskNum: number,
+  sessionId: string,
+  agentName?: string,
+  onChunk?: (chunk: string) => void,
+  onDone?: (result: string) => void,
+  onError?: (err: string) => void,
+): Promise<Response> {
+  const res = await fetch(BASE + `/execute/${taskNum}?session_id=${encodeURIComponent(sessionId)}${agentName ? '&agent_name=' + encodeURIComponent(agentName) : ''}`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+  });
+  if (!res.ok) {
+    const err = await res.json().catch(() => ({ error: res.statusText }));
+    onError?.(err.error || `HTTP ${res.status}`);
+    return res;
+  }
+  // Read SSE stream
+  const reader = res.body?.getReader();
+  if (!reader) { onError?.('No response body'); return res; }
+  const decoder = new TextDecoder();
+  let buffer = '';
+  (async () => {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      const lines = buffer.split('\n');
+      buffer = lines.pop() || '';
+      for (const line of lines) {
+        if (!line.startsWith('data: ')) continue;
+        try {
+          const msg = JSON.parse(line.slice(6));
+          if (msg.type === 'chunk') onChunk?.(msg.content || '');
+          else if (msg.type === 'done') onDone?.(msg.content || '');
+          else if (msg.type === 'task_info') onChunk?.(`\n📋 Task ${msg.task_num}: ${msg.content}\n`);
+          else if (msg.type === 'error') onError?.(msg.error || 'Unknown error');
+        } catch { /* skip */ }
+      }
+    }
+  })();
+  return res;
+}
+
+// approveCheck resolves a pending sandbox approval check.
+export async function approveCheck(checkId: number, approved: boolean): Promise<{ status: string; check_id: string; action: string }> {
+  return req(`/approve/${checkId}`, {
+    method: 'POST',
+    body: JSON.stringify({ check_id: checkId, approved }),
+  });
+}
+
 export async function addAgentToSession(sessionId: string, agentName: string): Promise<{ session_id: string; agent: string; status: string }> {
   return req(`/sessions/${encodeURIComponent(sessionId)}/agents`, { method: 'POST', body: JSON.stringify({ agent_name: agentName }) });
 }

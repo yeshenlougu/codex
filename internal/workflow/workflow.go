@@ -49,6 +49,48 @@ What existing systems are affected. Migration path if any. Breaking changes.
 
 Be thorough but concise. Every section should have substance, not placeholder text.`
 
+// SpecPromptTemplateWorktree is the prompt for /spec when a git worktree has been
+// created.  Args: desc, worktreePath, filename, branchName.
+const SpecPromptTemplateWorktree = `You are writing a technical specification.
+
+A dedicated git worktree has been created — work inside this directory:
+  %s
+Branch: %s
+
+Feature to spec: %s
+Output file: %s
+
+The specification must follow this format in Chinese:
+
+# <Feature Name>
+
+## 1. 背景与动机
+Why this feature is needed. What problem it solves.
+
+## 2. 目标
+Clear, measurable goals.
+
+## 3. 设计方案
+### 3.1 架构
+High-level architecture. Data flow. Component diagram described in text.
+
+### 3.2 数据结构
+Key data structures, API shapes, config schemas. Use code blocks.
+
+### 3.3 流程
+Key workflows as step-by-step sequences.
+
+## 4. 影响分析
+What existing systems are affected. Migration path if any. Breaking changes.
+
+## 5. 实施路线
+### Phase 1: ...
+### Phase 2: ...
+### Phase 3: ...
+
+IMPORTANT: Work ONLY inside the worktree directory. Do not modify files outside it.
+Write the spec to the output file shown above.`
+
 // PlanPromptTemplate is the prompt for generating a PLAN.md from a spec via LLM.
 // The %s is the spec filename to read.
 const PlanPromptTemplate = `You are writing an implementation plan. Read the specification file %s (use read_file tool), then generate a detailed implementation plan.

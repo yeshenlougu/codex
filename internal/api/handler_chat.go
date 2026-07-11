@@ -1,11 +1,16 @@
 package api
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"log"
 	"net/http"
+	"os"
+	"os/exec"
+	"path/filepath"
 	"strings"
+	"time"
 
 	"github.com/yeshenlougu/codex/internal/agent"
 	"github.com/yeshenlougu/codex/internal/workflow"
@@ -131,15 +136,37 @@ func (s *Server) handleSlashSpec(w http.ResponseWriter, r *http.Request, req *Ch
 		return true
 	}
 
+	slug := workflow.Slugify(desc)
 	filename := workflow.SpecFilename(desc)
-	prompt := fmt.Sprintf(workflow.SpecPromptTemplate, desc, filename)
+	worktreePath := filepath.Join("..", slug)
 
-	// Replace the original message with the crafted prompt
+	// Try to create a git worktree for isolated development
+	worktreeCreated := false
+	absWorktreePath := ""
+	if abs, err := filepath.Abs(worktreePath); err == nil {
+		absWorktreePath = abs
+	}
+	ctx, cancel := context.WithTimeout(context.Background(), 15*time.Second)
+	defer cancel()
+	out, err := exec.CommandContext(ctx, "git", "worktree", "add", "-b", slug, worktreePath).CombinedOutput()
+	if err == nil {
+		worktreeCreated = true
+		log.Printf("[spec] worktree created: %s (branch: %s)", worktreePath, slug)
+	} else {
+		log.Printf("[spec] worktree creation skipped: %v — %s", err, strings.TrimSpace(string(out)))
+		worktreePath = "." // fallback to current directory
+		absWorktreePath, _ = os.Getwd()
+	}
+
+	// Craft prompt: worktree-aware
+	var prompt string
+	if worktreeCreated {
+		prompt = fmt.Sprintf(workflow.SpecPromptTemplateWorktree, desc, absWorktreePath, filename, slug)
+	} else {
+		prompt = fmt.Sprintf(workflow.SpecPromptTemplate, desc, filename)
+	}
+
 	req.Message = prompt
-
-	// Also update msg for the streaming path
-	// (req.Message is used below, but msg is the trimmed version)
-	_ = msg
 	return false // let normal chat processing handle the prompt
 }
 
