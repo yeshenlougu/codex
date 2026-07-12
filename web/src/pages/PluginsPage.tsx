@@ -1,10 +1,11 @@
 import { useState, useMemo } from 'react';
-import { Card, Input, Button, Typography, Tag, Row, Col, Tabs, Space, Empty } from 'antd';
+import { Card, Input, Button, Typography, Tag, Row, Col, Tabs, Space, Empty, message } from 'antd';
 import {
   SearchOutlined, DownloadOutlined, CheckCircleOutlined, AppstoreOutlined,
   ThunderboltOutlined, ChromeOutlined, WindowsOutlined, EyeOutlined,
-  CodeOutlined, MoreOutlined, SettingOutlined, StarOutlined,
+  CodeOutlined, MoreOutlined, SettingOutlined, StarOutlined, PlusOutlined,
 } from '@ant-design/icons';
+import { installPlugin, uninstallPlugin, listPlugins } from '../lib/api';
 
 const { Text, Title } = Typography;
 
@@ -62,13 +63,28 @@ export default function PluginsPage() {
     new Set(ALL_PLUGINS.filter(p => p.installed).map(p => p.key))
   );
 
-  const toggleInstall = (key: string) => {
-    setInstalled(prev => {
-      const next = new Set(prev);
-      if (next.has(key)) next.delete(key);
-      else next.add(key);
-      return next;
-    });
+  const toggleInstall = async (plugin: PluginItem) => {
+    try {
+      if (installed.has(plugin.key)) {
+        await uninstallPlugin(plugin.key);
+        message.success(`${plugin.name} 已卸载`);
+      } else {
+        await installPlugin({
+          name: plugin.key,
+          description: plugin.description,
+          command: plugin.key,
+          args: [],
+          schema: { type: 'object', properties: {} },
+        });
+        message.success(`${plugin.name} 已安装`);
+      }
+      setInstalled(prev => {
+        const next = new Set(prev);
+        if (next.has(plugin.key)) next.delete(plugin.key);
+        else next.add(plugin.key);
+        return next;
+      });
+    } catch (e: any) { message.error(e.message); }
   };
 
   const filteredPlugins = useMemo(() => {
@@ -191,7 +207,7 @@ export default function PluginsPage() {
                           size="small"
                           type={installed.has(p.key) ? 'default' : 'primary'}
                           icon={installed.has(p.key) ? <CheckCircleOutlined /> : <DownloadOutlined />}
-                          onClick={(e) => { e.stopPropagation(); toggleInstall(p.key); }}
+                          onClick={(e) => { e.stopPropagation(); toggleInstall(p); }}
                           style={{ borderRadius: 6, fontSize: 11 }}
                         >
                           {installed.has(p.key) ? '已安装' : '安装'}

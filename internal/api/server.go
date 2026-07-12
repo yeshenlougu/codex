@@ -4,9 +4,11 @@ package api
 import (
 	"context"
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"os"
+	"path/filepath"
 	"strings"
 	"sync"
 	"time"
@@ -14,18 +16,20 @@ import (
 	"github.com/yeshenlougu/codex/internal/agent"
 	"github.com/yeshenlougu/codex/internal/config"
 	"github.com/yeshenlougu/codex/internal/sandbox"
+	"github.com/yeshenlougu/codex/internal/schedule"
 	"github.com/yeshenlougu/codex/internal/session"
 )
 
 // Server is the HTTP/WebSocket API server.
 type Server struct {
-	cfg     *config.Config
-	store   *session.Store
-	manager *agent.Manager   // multi-agent session manager
-	mu      sync.RWMutex
-	httpSrv *http.Server
-	wsHub   *wsHub
-	addr    string
+	cfg       *config.Config
+	store     *session.Store
+	manager   *agent.Manager    // multi-agent session manager
+	scheduler *schedule.Engine  // cron scheduler
+	mu        sync.RWMutex
+	httpSrv   *http.Server
+	wsHub     *wsHub
+	addr      string
 }
 
 // New creates a new API server.
@@ -53,13 +57,44 @@ func (s *Server) Start() error {
 	s.manager = agent.NewManager(s.cfg, s.store, agRegistry)
 	log.Printf("[api] agent manager ready — %d profiles loaded", len(agRegistry.List()))
 
-	// Wire sandbox approval to WebSocket broadcast
+	// Sandbox approval
 	sandbox.OnApprovalRequested = func(check sandbox.Check) {
 		data, _ := json.Marshal(check)
 		s.wsHub.broadcastMsg(wsMessage{
 			Type:    "approval_request",
 			Content: string(data),
 		})
+	}
+
+	// Schedule engine
+	schedDir := filepath.Join(expandHome("~/.codex"), "schedules")
+	var schedErr error
+	s.scheduler, schedErr = schedule.NewEngine(schedDir)
+	if schedErr != nil {
+		log.Printf("[api] schedule engine: %v", schedErr)
+	} else {
+		s.scheduler.OnTrigger = func(task schedule.Task) {
+			log.Printf("[api] schedule trigger: %s — executing via agent", task.Name)
+			go func() {
+				sessionID := fmt.Sprintf("sched-%s-%d", task.ID, time.Now().Unix())
+				ag, err := s.manager.CreateSession(sessionID)
+				if err != nil {
+					log.Printf("[api] schedule session error: %v", err)
+					return
+				}
+				result, err := ag.Run(task.Prompt, nil)
+				if err != nil {
+					log.Printf("[api] schedule run error: %v", err)
+					s.scheduler.UpdateLastRun(task.ID, "ERROR: "+err.Error())
+				} else {
+					log.Printf("[api] schedule run done: %s — %d chars", task.Name, len(result))
+					s.scheduler.UpdateLastRun(task.ID, result)
+				}
+				s.manager.RemoveSession(sessionID)
+			}()
+		}
+		s.scheduler.Start()
+		log.Printf("[api] schedule engine ready")
 	}
 
 	mux := http.NewServeMux()
@@ -128,6 +163,20 @@ func (s *Server) Start() error {
 	// Sandbox approval (resolve pending checks)
 	mux.HandleFunc("/api/approve/", cors(s.handleApprove))
 	mux.HandleFunc("/api/approve", cors(s.handleApprove))
+
+	// Schedules (cron-based agent tasks)
+	mux.HandleFunc("/api/schedules", cors(s.handleSchedules))
+	mux.HandleFunc("/api/schedules/", cors(s.handleSchedules))
+
+	// Plugins
+	mux.HandleFunc("/api/plugins", cors(s.handlePlugins))
+	mux.HandleFunc("/api/plugins/", cors(s.handlePlugins))
+
+	// Skills
+	mux.HandleFunc("/api/skills", cors(s.handleSkills))
+
+	// Terminal
+	mux.HandleFunc("/api/terminal", cors(s.handleTerminal))
 
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)

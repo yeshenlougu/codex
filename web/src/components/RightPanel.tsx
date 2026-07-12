@@ -4,7 +4,7 @@ import {
   FolderOutlined, FileOutlined, AuditOutlined, CodeOutlined,
   GlobalOutlined, UnorderedListOutlined, CloseOutlined,
 } from '@ant-design/icons';
-import { listFiles, readFileContent, getTasks } from '../lib/api';
+import { listFiles, readFileContent, getTasks, execTerminal } from '../lib/api';
 import type { RightTab } from '../App';
 import type { Task } from '../lib/api';
 
@@ -190,12 +190,21 @@ function ReviewPanel() {
 function TerminalPanel() {
   const [output, setOutput] = useState<string[]>(['Codex Go Terminal v1.0.0', '输入命令并按回车执行...', '']);
   const [cmd, setCmd] = useState('');
+  const [executing, setExecuting] = useState(false);
 
-  const handleCmd = () => {
+  const handleCmd = async () => {
     const c = cmd.trim();
-    if (!c) return;
-    setOutput(prev => [...prev, `$ ${c}`, `(终端命令通过 Backend API 执行)`, '']);
+    if (!c || executing) return;
+    setOutput(prev => [...prev, `$ ${c}`, '']);
     setCmd('');
+    setExecuting(true);
+    try {
+      const res = await execTerminal(c);
+      setOutput(prev => [...prev, res.output || '', '']);
+    } catch (e: any) {
+      setOutput(prev => [...prev, `Error: ${e.message}`, '']);
+    }
+    setExecuting(false);
   };
 
   return (

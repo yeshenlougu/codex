@@ -230,3 +230,52 @@ export async function removeAgentFromSession(sessionId: string, agentName: strin
 export async function listSessionAgents(sessionId: string): Promise<{ session_id: string; agents: string[] }> {
   return req(`/sessions/${encodeURIComponent(sessionId)}/agents`);
 }
+
+// === Schedules ===
+
+export interface ScheduleTask {
+  id: string; name: string; description: string; prompt: string;
+  cron_expr: string; category: string; enabled: boolean;
+  created_at: string; updated_at: string; next_run: string;
+  last_run?: string; last_result?: string;
+}
+
+export async function listSchedules(): Promise<{ schedules: ScheduleTask[] }> {
+  return req('/schedules');
+}
+
+export async function createSchedule(task: Partial<ScheduleTask>): Promise<ScheduleTask> {
+  return req('/schedules', { method: 'POST', body: JSON.stringify(task) });
+}
+
+export async function deleteSchedule(id: string): Promise<{ deleted: string }> {
+  return req(`/schedules/${id}`, { method: 'DELETE' });
+}
+
+// === Plugins ===
+
+export async function listPlugins(): Promise<{ plugins: string[]; dir: string }> {
+  return req('/plugins');
+}
+
+export async function installPlugin(def: Record<string, any>): Promise<any> {
+  return req('/plugins/install', { method: 'POST', body: JSON.stringify(def) });
+}
+
+export async function uninstallPlugin(name: string): Promise<{ uninstalled: string }> {
+  return req(`/plugins/${name}`, { method: 'DELETE' });
+}
+
+// === Skills ===
+
+export interface SkillInfo { name: string; description: string; category: string; }
+
+export async function listSkills(): Promise<{ skills: SkillInfo[] }> {
+  return req('/skills');
+}
+
+// === Terminal ===
+
+export async function execTerminal(command: string, workdir?: string): Promise<{ output: string; error?: string }> {
+  return req('/terminal', { method: 'POST', body: JSON.stringify({ command, workdir }) });
+}
