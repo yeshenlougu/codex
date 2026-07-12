@@ -1,11 +1,12 @@
-import { useState, useMemo } from 'react';
-import { Card, Input, Button, Typography, Tag, Row, Col, Tabs, Space, Empty, message } from 'antd';
+import { useState, useMemo, useEffect } from 'react';
+import { Card, Input, Button, Typography, Tag, Row, Col, Tabs, Space, Empty, message, Spin } from 'antd';
 import {
   SearchOutlined, DownloadOutlined, CheckCircleOutlined, AppstoreOutlined,
   ThunderboltOutlined, ChromeOutlined, WindowsOutlined, EyeOutlined,
   CodeOutlined, MoreOutlined, SettingOutlined, StarOutlined, PlusOutlined,
 } from '@ant-design/icons';
-import { installPlugin, uninstallPlugin, listPlugins } from '../lib/api';
+import { installPlugin, uninstallPlugin, listPlugins, listSkills } from '../lib/api';
+import type { SkillInfo } from '../lib/api';
 
 const { Text, Title } = Typography;
 
@@ -62,6 +63,16 @@ export default function PluginsPage() {
   const [installed, setInstalled] = useState<Set<string>>(
     new Set(ALL_PLUGINS.filter(p => p.installed).map(p => p.key))
   );
+  const [skills, setSkills] = useState<SkillInfo[]>([]);
+  const [skillsLoading, setSkillsLoading] = useState(false);
+
+  useEffect(() => {
+    if (tab === 'skills') {
+      setSkillsLoading(true);
+      listSkills().then(s => setSkills(s.skills || [])).catch(() => {})
+        .finally(() => setSkillsLoading(false));
+    }
+  }, [tab]);
 
   const toggleInstall = async (plugin: PluginItem) => {
     try {
@@ -238,25 +249,26 @@ export default function PluginsPage() {
             />
 
             <Row gutter={[12, 12]}>
-              {[
-                { name: 'code-review', desc: '代码审查与建议改进', icon: '🔍' },
-                { name: 'refactor', desc: '重构代码模式与优化', icon: '♻️' },
-                { name: 'test-gen', desc: '自动生成单元测试', icon: '🧪' },
-                { name: 'docs-gen', desc: '自动生成 API 文档', icon: '📖' },
-                { name: 'db-migrate', desc: '数据库迁移与 Schema 管理', icon: '🗄️' },
-                { name: 'deploy', desc: '自动化部署与 CI/CD', icon: '🚀' },
-              ].map(skill => (
-                <Col xs={24} sm={12} key={skill.name}>
-                  <Card size="small" hoverable bodyStyle={{ padding: '14px', display: 'flex', gap: 12, alignItems: 'center' }}>
-                    <Text style={{ fontSize: 22, flexShrink: 0 }}>{skill.icon}</Text>
-                    <div style={{ flex: 1 }}>
-                      <Text strong style={{ fontSize: 13 }}>{skill.name}</Text>
-                      <Text type="secondary" style={{ fontSize: 11, display: 'block', lineHeight: 1.4 }}>{skill.desc}</Text>
-                    </div>
-                    <Button type="text" size="small" icon={<SettingOutlined />} />
-                  </Card>
+              {skillsLoading ? (
+                <Col span={24}><Spin style={{ display: 'block', textAlign: 'center', padding: 24 }} /></Col>
+              ) : skills.length === 0 ? (
+                <Col span={24}>
+                  <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<Text type="secondary" style={{ fontSize: 11 }}>未发现技能 — 将 SKILL.md 放入 ~/.codex/skills/</Text>} />
                 </Col>
-              ))}
+              ) : (
+                skills.map(skill => (
+                  <Col xs={24} sm={12} key={skill.name}>
+                    <Card size="small" hoverable bodyStyle={{ padding: '14px', display: 'flex', gap: 12, alignItems: 'center' }}>
+                      <Text style={{ fontSize: 22, flexShrink: 0 }}>📄</Text>
+                      <div style={{ flex: 1 }}>
+                        <Text strong style={{ fontSize: 13 }}>{skill.name}</Text>
+                        <Text type="secondary" style={{ fontSize: 11, display: 'block', lineHeight: 1.4 }}>{skill.description || '无描述'}</Text>
+                        {skill.category && <Tag style={{ marginTop: 4, fontSize: 9 }}>{skill.category}</Tag>}
+                      </div>
+                    </Card>
+                  </Col>
+                ))
+              )}
             </Row>
 
             <div style={{ marginTop: 20, padding: 16, background: 'var(--bg-panel)', borderRadius: 8, border: '1px solid var(--border)' }}>

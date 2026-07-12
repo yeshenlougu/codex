@@ -279,3 +279,13 @@ export async function listSkills(): Promise<{ skills: SkillInfo[] }> {
 export async function execTerminal(command: string, workdir?: string): Promise<{ output: string; error?: string }> {
   return req('/terminal', { method: 'POST', body: JSON.stringify({ command, workdir }) });
 }
+
+// === Git Review ===
+
+export async function getGitStatus(): Promise<{ branch: string; status: string; log: string }> {
+  return req('/git/status');
+}
+
+export async function getGitDiff(files?: string[]): Promise<{ diff: string; error?: string }> {
+  return req('/git/diff', { method: 'POST', body: JSON.stringify({ files: files || [] }) });
+}

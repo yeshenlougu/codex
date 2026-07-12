@@ -178,6 +178,10 @@ func (s *Server) Start() error {
 	// Terminal
 	mux.HandleFunc("/api/terminal", cors(s.handleTerminal))
 
+	// Git review
+	mux.HandleFunc("/api/git/status", cors(s.handleGitStatus))
+	mux.HandleFunc("/api/git/diff", cors(s.handleGitDiff))
+
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)
 

@@ -4,7 +4,7 @@ import {
   FolderOutlined, FileOutlined, AuditOutlined, CodeOutlined,
   GlobalOutlined, UnorderedListOutlined, CloseOutlined,
 } from '@ant-design/icons';
-import { listFiles, readFileContent, getTasks, execTerminal } from '../lib/api';
+import { listFiles, readFileContent, getTasks, execTerminal, getGitStatus } from '../lib/api';
 import type { RightTab } from '../App';
 import type { Task } from '../lib/api';
 
@@ -168,20 +168,52 @@ function FilesPanel() {
   );
 }
 
-// Review panel — shows recent diffs/changes
+// Review panel — shows git status and recent changes
 function ReviewPanel() {
+  const [gitInfo, setGitInfo] = useState<{ branch: string; status: string; log: string } | null>(null);
+  const [loading, setLoading] = useState(true);
+
+  useEffect(() => {
+    getGitStatus().then(r => setGitInfo(r)).catch(() => {}).finally(() => setLoading(false));
+  }, []);
+
   return (
     <div style={{ display: 'flex', flexDirection: 'column', height: '100%' }}>
-      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)' }}>
+      <div style={{ padding: '8px 12px', borderBottom: '1px solid var(--border)', display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
         <Text strong style={{ fontSize: 12 }}>🔍 审阅更改</Text>
+        <Button type="text" size="small" onClick={() => { setLoading(true); getGitStatus().then(r => setGitInfo(r)).finally(() => setLoading(false)); }}>
+          🔄
+        </Button>
       </div>
-      <Empty
-        image={Empty.PRESENTED_IMAGE_SIMPLE}
-        description={<Text type="secondary" style={{ fontSize: 11 }}>暂无活动更改</Text>}
-        style={{ padding: '40px 20px' }}
-      >
-        <Text type="secondary" style={{ fontSize: 10 }}>文件差异将在 Agent 会话期间出现</Text>
-      </Empty>
+      {loading ? (
+        <Spin size="small" style={{ display: 'block', textAlign: 'center', padding: 24 }} />
+      ) : gitInfo ? (
+        <div style={{ flex: 1, overflowY: 'auto', padding: '8px 10px' }}>
+          {gitInfo.branch && (
+            <div style={{ marginBottom: 8 }}>
+              <Tag color="blue" style={{ fontSize: 10 }}>🌿 {gitInfo.branch.trim()}</Tag>
+            </div>
+          )}
+          {gitInfo.status ? (
+            <pre style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-secondary)', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+              {gitInfo.status}
+            </pre>
+          ) : (
+            <Text type="secondary" style={{ fontSize: 11 }}>工作区干净 ✨</Text>
+          )}
+          {gitInfo.log && (
+            <>
+              <div style={{ height: 1, background: 'var(--border)', margin: '8px 0' }} />
+              <Text type="secondary" style={{ fontSize: 10, fontWeight: 600, display: 'block', marginBottom: 4 }}>最近提交</Text>
+              <pre style={{ fontSize: 10, fontFamily: "'JetBrains Mono', monospace", color: 'var(--text-muted)', margin: 0, whiteSpace: 'pre-wrap', lineHeight: 1.6 }}>
+                {gitInfo.log}
+              </pre>
+            </>
+          )}
+        </div>
+      ) : (
+        <Empty image={Empty.PRESENTED_IMAGE_SIMPLE} description={<Text type="secondary" style={{ fontSize: 11 }}>不在 Git 仓库中</Text>} style={{ padding: '20px' }} />
+      )}
     </div>
   );
 }
