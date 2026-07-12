@@ -91,6 +91,10 @@ type Client struct {
 
 // NewClient creates a new LLM client.
 func NewClient(baseURL, apiKey, model string) *Client {
+	if apiKey == "" {
+		// Return a client that will produce a clear error on first request
+		apiKey = "MISSING_API_KEY"
+	}
 	return &Client{
 		BaseURL:    strings.TrimRight(baseURL, "/"),
 		APIKey:     apiKey,

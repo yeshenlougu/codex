@@ -13,6 +13,7 @@ import (
 	"github.com/yeshenlougu/codex/internal/mcp"
 	"github.com/yeshenlougu/codex/internal/plugin"
 	"github.com/yeshenlougu/codex/internal/provider"
+	"github.com/yeshenlougu/codex/internal/sandbox"
 	"github.com/yeshenlougu/codex/internal/session"
 	"github.com/yeshenlougu/codex/internal/skill"
 	"github.com/yeshenlougu/codex/internal/tool"
@@ -312,6 +313,11 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 	for a.turnCount < a.cfg.Agent.MaxTurns && a.running {
 		a.turnCount++
 
+		// Auto-compress context when message count exceeds threshold
+		if len(a.messages) > 40 {
+			a.CompressContext(8) // keep last 8 user-assistant pairs
+		}
+
 		toolDefs := a.registry.List()
 		providerToolDefs := make([]provider.ToolDef, len(toolDefs))
 		for i, td := range toolDefs {
@@ -344,6 +350,19 @@ func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, err
 		})
 
 		for _, tc := range result.toolCalls {
+			// Sandbox approval gate
+			risk := sandbox.RiskLevel(tc.Function.Name, tc.Function.Arguments)
+			check := sandbox.Check{
+				Tool:        tc.Function.Name,
+				Args:        tc.Function.Arguments,
+				Risk:        risk,
+				Description: fmt.Sprintf("Execute %s", tc.Function.Name),
+			}
+			if !sandbox.RequestApproval(check) {
+				a.AddToolResult(tc.ID, fmt.Sprintf("Tool execution rejected by user (risk: %s)", risk))
+				continue
+			}
+
 			// Pre-tool hook
 			if err := a.hooks.RunPreTool(hook.Context{
 				SessionID: a.sessionID,

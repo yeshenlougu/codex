@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from 'react';
-import { Card, Input, Button, Tag, Row, Col, Typography, Tooltip, Popover, Modal, Space, Result } from 'antd';
+import { Card, Input, Button, Tag, Row, Col, Typography, Tooltip, Popover, Modal, Space, Result, Dropdown } from 'antd';
 import {
   SendOutlined, SearchOutlined, ToolOutlined, BugOutlined, AuditOutlined,
   FileTextOutlined, StopOutlined, PlusOutlined, SettingOutlined,
@@ -453,10 +453,35 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
             background: 'var(--bg-panel)', border: '1px solid var(--border)',
             borderRadius: 10, padding: '6px 8px',
           }}>
-            <Tooltip title="添加上下文">
-              <Button type="text" size="small" icon={<span style={{ fontWeight: 700, fontSize: 16 }}>+</span>}
+            <Dropdown
+              menu={{
+                items: [
+                  { key: 'file', label: '添加文件', icon: <FileTextOutlined />,
+                    onClick: () => {
+                      const input = document.createElement('input');
+                      input.type = 'file'; input.multiple = true;
+                      input.onchange = (e: any) => {
+                        const files = Array.from(e.target.files || []) as File[];
+                        setInput(prev => prev + '\n' + files.map(f => f.name).join(', '));
+                      };
+                      input.click();
+                    }
+                  },
+                  { key: 'divider', type: 'divider' },
+                  { key: 'spec', label: '/spec — 写规格', icon: <FileTextOutlined />,
+                    onClick: () => setInput(prev => (prev ? prev + '\n' : '') + '/spec ') },
+                  { key: 'steer', label: '/steer — 全流程', icon: <BulbOutlined />,
+                    onClick: () => setInput(prev => (prev ? prev + '\n' : '') + '/steer ') },
+                  { key: 'execute', label: '/execute — 执行任务', icon: <RocketOutlined />,
+                    onClick: () => setInput(prev => (prev ? prev + '\n' : '') + '/execute 1') },
+                ]
+              }}
+              trigger={['click']}
+            >
+              <Button type="text" size="small"
+                icon={<span style={{ fontWeight: 700, fontSize: 16 }}>+</span>}
                 style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
-            </Tooltip>
+            </Dropdown>
             <TextArea
               value={input}
               onChange={e => setInput(e.target.value)}

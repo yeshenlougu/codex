@@ -25,6 +25,20 @@ function AppContent() {
   const [workspace, setWorkspace] = useState('default');
   const [projects, setProjects] = useState<string[]>([]);
 
+  // Keyboard shortcuts
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const mod = e.ctrlKey || e.metaKey;
+      if (mod && e.altKey && e.key === 'b') { e.preventDefault(); setRightOpen(v => !v); return; }
+      if (mod && e.altKey && e.key === 's') { e.preventDefault(); setRightTab('sidetasks'); setRightOpen(true); return; }
+      if (mod && e.shiftKey && e.key === 'G') { e.preventDefault(); setRightTab('review'); setRightOpen(true); return; }
+      if (mod && e.key === 't') { e.preventDefault(); setRightTab('browser'); setRightOpen(true); return; }
+      if (mod && e.key === 'p') { e.preventDefault(); setRightTab('files'); setRightOpen(true); return; }
+    };
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, []);
+
   const newSession = useCallback(() => {
     const n = new Date(); const p = (x: number) => String(x).padStart(2, '0');
     setSessionId(`${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`);
@@ -80,7 +94,7 @@ function AppContent() {
         )}
         <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden', minWidth: 0 }}>
           {page === 'chat' && (
-            <ChatPage sessionId={sessionId} workspace={workspace} />
+            <ChatPage sessionId={sessionId} workspace={workspace} onNavigate={setPage} />
           )}
           {page === 'settings' && <SettingsPage onBack={() => setPage('chat')} />}
           {page === 'scheduled' && <ScheduledPage />}
@@ -90,10 +104,6 @@ function AppContent() {
         {!isFullPage && rightOpen && (
           <RightPanel tab={rightTab} onTabChange={setRightTab} onClose={() => setRightOpen(false)} />
         )}
-      </div>
-      <div className="statusbar">
-        <span>Codex Go</span>
-        <span style={{ marginLeft: 'auto' }}>🟢 在线</span>
       </div>
     </div>
     </ConfigProvider>
