@@ -660,15 +660,33 @@ function DraggableBall({ agentAvatar, onBallClick }: { agentAvatar: string; onBa
 
 function Markdown({ text }: { text: string }) {
   const blocks = useMemo(() => {
-    const parts: { type: 'text' | 'code'; content: string; lang?: string }[] = [];
-    const re = /```(\w*)\n([\s\S]*?)```/g;
-    let last = 0, m: RegExpExecArray | null;
-    while ((m = re.exec(text)) !== null) {
-      if (m.index > last) parts.push({ type: 'text', content: text.slice(last, m.index) });
-      parts.push({ type: 'code', lang: m[1], content: m[2].trimEnd() });
-      last = m.index + m[0].length;
+    const parts: { type: 'text' | 'code' | 'image'; content: string; lang?: string; alt?: string }[] = [];
+    // Extract code blocks first
+    const codeRe = /```(\w*)\n([\s\S]*?)```/g;
+    let cleaned = text;
+    let m: RegExpExecArray | null;
+    while ((m = codeRe.exec(text)) !== null) {
+      cleaned = cleaned.replace(m[0], `\x00CODE\x00`);
     }
-    if (last < text.length) parts.push({ type: 'text', content: text.slice(last) });
+    // Extract markdown images from remaining text
+    const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g;
+    let last = 0;
+    let imgMatch: RegExpExecArray | null;
+    let codeIdx = 0;
+    while ((imgMatch = imgRe.exec(cleaned)) !== null) {
+      if (imgMatch.index > last) parts.push({ type: 'text', content: cleaned.slice(last, imgMatch.index) });
+      parts.push({ type: 'image', content: imgMatch[2], alt: imgMatch[1] });
+      last = imgMatch.index + imgMatch[0].length;
+    }
+    if (last < cleaned.length) {
+      // Restore code blocks in remaining text
+      let rest = cleaned.slice(last);
+      codeRe.lastIndex = 0;
+      const codeBlocks: string[] = [];
+      while ((m = codeRe.exec(text)) !== null) codeBlocks.push(`\`\`\`${m[1]}\n${m[2]}\`\`\``);
+      for (const cb of codeBlocks) rest = rest.replace('\x00CODE\x00', cb);
+      if (rest.trim()) parts.push({ type: 'text', content: rest });
+    }
     return parts;
   }, [text]);
 
@@ -696,15 +714,29 @@ function Markdown({ text }: { text: string }) {
   }
 
   return <>
-    {blocks.map((b, i) => b.type === 'code' ? (
-      <pre key={i} style={{
-        background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 8,
-        padding: '10px 14px', margin: '6px 0', overflow: 'auto', fontSize: 12,
-        fontFamily: "'JetBrains Mono', monospace",
-      }}>
-        {b.lang && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>{b.lang}</div>}
-        <code>{b.content}</code>
-      </pre>
-    ) : <span key={i}>{renderText(b.content)}</span>)}
+    {blocks.map((b, i) => {
+      if (b.type === 'code') return (
+        <pre key={i} style={{
+          background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 8,
+          padding: '10px 14px', margin: '6px 0', overflow: 'auto', fontSize: 12,
+          fontFamily: "'JetBrains Mono', monospace",
+        }}>
+          {b.lang && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>{b.lang}</div>}
+          <code>{b.content}</code>
+        </pre>
+      );
+      if (b.type === 'image') return (
+        <div key={i} style={{ margin: '8px 0' }}>
+          <img
+            src={b.content}
+            alt={b.alt || 'Generated image'}
+            style={{ maxWidth: '100%', maxHeight: 512, borderRadius: 8, border: '1px solid var(--border)' }}
+            loading="lazy"
+          />
+          {b.alt && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginTop: 4, textAlign: 'center' }}>{b.alt}</div>}
+        </div>
+      );
+      return <span key={i}>{renderText(b.content)}</span>;
+    })}
   </>;
 }

@@ -49,6 +49,8 @@ func New(cfg *config.Config) *Agent {
 	registry.Register(tool.NewGitTool())
 	registry.Register(tool.NewWebFetchTool())
 	registry.Register(tool.NewGitWorktreeTool())
+	imgTool := tool.NewImageGenTool()
+	registry.Register(imgTool)
 
 	// ---- Plugin tools (.plugin.json files) ----
 	for _, dir := range cfg.Plugins.Dirs {
@@ -106,6 +108,12 @@ func New(cfg *config.Config) *Agent {
 	// ---- Backend pool ----
 	pool := buildPool(cfg)
 	pool.StartHealthCheck()
+
+	// Wire image generation tool to pool's image_gen backends
+	if entry, _, ok := pool.SelectFor(provider.ModelImageGen); ok {
+		imgTool.SetBackend(entry.BaseURL, entry.Key, cfg.Model.Model)
+		log.Printf("[agent] image_gen backend: %s (%s)", entry.BaseURL, entry.Label)
+	}
 
 	// ---- System prompt with skills ----
 	systemPrompt := cfg.Agent.SystemPrompt + skills.SystemPrompt()
