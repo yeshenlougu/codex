@@ -25,7 +25,7 @@ interface FileNode {
 
 const TAB_ITEMS = [
   { key: 'review' as RightTab, label: '审阅', icon: <AuditOutlined />, shortcut: 'Ctrl+Shift+G' },
-  { key: 'terminal' as RightTab, label: '终端', icon: <CodeOutlined /> },
+  { key: 'terminal' as RightTab, label: '终端', icon: <CodeOutlined />, shortcut: '' },
   { key: 'browser' as RightTab, label: '浏览器', icon: <GlobalOutlined />, shortcut: 'Ctrl+T' },
   { key: 'files' as RightTab, label: '文件', icon: <FolderOutlined />, shortcut: 'Ctrl+P' },
   { key: 'sidetasks' as RightTab, label: '侧边任务', icon: <UnorderedListOutlined />, shortcut: 'Ctrl+Alt+S' },
@@ -34,40 +34,41 @@ const TAB_ITEMS = [
 export default function RightPanel({ tab, onTabChange, onClose }: Props) {
   return (
     <div style={{
-      width: 320, display: 'flex', flexDirection: 'column',
+      width: 300, display: 'flex',
       background: 'var(--bg-panel)', borderLeft: '1px solid var(--border)',
       flexShrink: 0,
     }}>
-      {/* Header */}
+      {/* Vertical tab bar */}
       <div style={{
-        display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 8px', borderBottom: '1px solid var(--border)',
+        width: 44, display: 'flex', flexDirection: 'column', alignItems: 'center',
+        borderRight: '1px solid var(--border)', padding: '8px 0', gap: 2,
       }}>
-        <div style={{ display: 'flex', gap: 0 }}>
-          {TAB_ITEMS.map(item => (
-            <Tooltip key={item.key} title={item.shortcut || item.label}>
-              <Button
-                type="text"
-                size="small"
-                icon={item.icon}
-                onClick={() => onTabChange(item.key)}
-                style={{
-                  color: tab === item.key ? 'var(--accent)' : 'var(--text-muted)',
-                  background: tab === item.key ? 'var(--bg-active)' : 'transparent',
-                  fontSize: 14,
-                }}
-              />
-            </Tooltip>
-          ))}
-        </div>
+        {TAB_ITEMS.map(item => (
+          <Tooltip key={item.key} title={`${item.label} ${item.shortcut}`} placement="left">
+            <div
+              onClick={() => onTabChange(item.key)}
+              style={{
+                width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+                borderRadius: 6, cursor: 'pointer', fontSize: 16,
+                color: tab === item.key ? 'var(--accent)' : 'var(--text-muted)',
+                background: tab === item.key ? 'var(--bg-active)' : 'transparent',
+              }}
+            >
+              {item.icon}
+            </div>
+          </Tooltip>
+        ))}
+        <div style={{ flex: 1 }} />
         <Tooltip title="关闭 Ctrl+Alt+B">
-          <Button type="text" size="small" icon={<CloseOutlined />} onClick={onClose}
-            style={{ color: 'var(--text-muted)', fontSize: 12 }} />
+          <div onClick={onClose} style={{
+            width: 32, height: 32, display: 'flex', alignItems: 'center', justifyContent: 'center',
+            borderRadius: 6, cursor: 'pointer', fontSize: 14, color: 'var(--text-muted)',
+          }}><CloseOutlined /></div>
         </Tooltip>
       </div>
 
       {/* Content */}
-      <div style={{ flex: 1, overflow: 'hidden' }}>
+      <div style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
         {tab === 'files' && <FilesPanel />}
         {tab === 'review' && <ReviewPanel />}
         {tab === 'terminal' && <TerminalPanel />}
@@ -342,7 +343,7 @@ function SideTasksPanel() {
           />
         ) : (
           <div style={{ display: 'flex', flexDirection: 'column', gap: 2 }}>
-            {tasks.map((t, i) => (
+            {tasks.map((t) => (
               <div
                 key={t.number}
                 style={{

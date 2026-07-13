@@ -1,7 +1,6 @@
 package agent
 
 import (
-	"encoding/json"
 	"fmt"
 	"log"
 	"os"
@@ -79,7 +78,7 @@ func New(cfg *config.Config) *Agent {
 		mcpClients = append(mcpClients, client)
 		// Register each MCP tool as a wrapped tool
 		for _, t := range client.Tools {
-			wrapped := newMCPToolWrapper(client, t)
+			wrapped := mcp.NewToolWrapper(client, t)
 			registry.Register(wrapped)
 			log.Printf("[agent] MCP tool loaded: %s (from %s)", t.Name, srv.Name)
 		}
@@ -133,38 +132,6 @@ func expandHome(path string) string {
 		}
 	}
 	return path
-}
-
-// mcpToolWrapper wraps an MCP ToolDescription to implement the tool.Tool interface.
-type mcpToolWrapper struct {
-	client *mcp.MCPClient
-	desc   mcp.ToolDescription
-}
-
-func newMCPToolWrapper(client *mcp.MCPClient, desc mcp.ToolDescription) *mcpToolWrapper {
-	return &mcpToolWrapper{client: client, desc: desc}
-}
-
-func (w *mcpToolWrapper) Name() string        { return w.desc.Name }
-func (w *mcpToolWrapper) Description() string  { return w.desc.Description }
-func (w *mcpToolWrapper) Schema() map[string]any {
-	if w.desc.InputSchema != nil {
-		return w.desc.InputSchema
-	}
-	return map[string]any{"type": "object", "properties": map[string]any{}}
-}
-func (w *mcpToolWrapper) Execute(rawArgs string) (*tool.Result, error) {
-	var args map[string]any
-	if rawArgs != "" {
-		if err := json.Unmarshal([]byte(rawArgs), &args); err != nil {
-			return &tool.Result{Success: false, Error: "invalid mcp args: " + err.Error()}, nil
-		}
-	}
-	output, err := w.client.CallTool(w.desc.Name, args)
-	if err != nil {
-		return &tool.Result{Success: false, Error: err.Error(), Output: output}, nil
-	}
-	return &tool.Result{Success: true, Output: output}, nil
 }
 
 // Close shuts down MCP clients.

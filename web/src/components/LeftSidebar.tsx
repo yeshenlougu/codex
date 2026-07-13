@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from 'react';
 import { Layout, Button, Modal, Input, Space, Typography, Tooltip } from 'antd';
 import {
-  PlusOutlined, FolderOpenOutlined, FolderAddOutlined, DeleteOutlined,
+  FolderOpenOutlined, FolderAddOutlined, DeleteOutlined,
   HomeOutlined, EditOutlined, ClockCircleOutlined, AppstoreOutlined,
   SettingOutlined, DownOutlined, BulbOutlined,
 } from '@ant-design/icons';
@@ -272,24 +272,18 @@ export default function LeftSidebar(props: Props) {
         )}
       </div>
 
-      {/* New session */}
-      <div style={{ padding: '2px 8px' }}>
-        <Button block size="small" icon={<PlusOutlined />} onClick={onNewSession} style={{ fontSize: 11 }}>
-          新建任务
-        </Button>
-      </div>
-
-      {/* Bottom */}
+      {/* Bottom — sticky */}
       <div style={{
         display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-        padding: '6px 12px', borderTop: '1px solid var(--border)',
+        padding: '8px 14px 6px', borderTop: '1px solid var(--border)',
+        marginTop: 'auto',
       }}>
         <div
           onClick={() => onNavigate('settings')}
           style={{
-            display: 'flex', alignItems: 'center', gap: 4, cursor: 'pointer',
+            display: 'flex', alignItems: 'center', justifyContent: 'center',
+            cursor: 'pointer', fontSize: 18,
             color: page === 'settings' ? 'var(--accent)' : 'var(--text-muted)',
-            fontSize: 18,
           }}
         >
           <SettingOutlined />

@@ -621,20 +621,13 @@ body {
   font-family: 'JetBrains Mono', monospace;
 }
 
-/* ==================== Status bar ==================== */
-.statusbar {
-  height: 24px;
-  display: flex;
-  align-items: center;
-  padding: 0 12px;
-  border-top: 1px solid var(--border);
-  background: var(--bg-panel);
-  font-size: 10px;
-  color: var(--text-muted);
-  flex-shrink: 0;
-  gap: 16px;
+/* Fix antd Sider children to fill height & inherit flex */
+.app-body .ant-layout-sider-children {
+  height: 100% !important;
+  display: flex !important;
+  flex-direction: column !important;
+  overflow: hidden !important;
 }
-
 /* ==================== Left Sidebar ==================== */
 .left-sidebar {
   width: 240px;

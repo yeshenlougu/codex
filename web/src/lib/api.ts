@@ -270,14 +270,105 @@ export async function uninstallPlugin(name: string): Promise<{ uninstalled: stri
 
 export interface SkillInfo { name: string; description: string; category: string; }
 
+export interface InstalledSkill {
+  id: string; name: string; description: string;
+  directory: string; repo_owner: string; repo_name: string; repo_branch: string;
+  readme_url: string; content_hash: string;
+  installed_at: number; updated_at: number; enabled: boolean;
+}
+
+export interface DiscoverSkill {
+  key: string; name: string; description: string;
+  directory: string; repo_owner: string; repo_name: string;
+  repo_branch: string; readme_url: string; installed: boolean;
+}
+
+export interface SkillRepoItem {
+  owner: string; name: string; branch: string; enabled: boolean;
+}
+
 export async function listSkills(): Promise<{ skills: SkillInfo[] }> {
   return req('/skills');
+}
+
+export async function listInstalledSkills(): Promise<{ skills: InstalledSkill[] }> {
+  return req('/skills/installed');
+}
+
+export async function discoverSkills(): Promise<{ skills: DiscoverSkill[] }> {
+  return req('/skills/discover');
+}
+
+export async function installSkill(key: string, owner: string, repo: string, branch: string, dir: string): Promise<InstalledSkill> {
+  return req('/skills/install', { method: 'POST', body: JSON.stringify({ key, repo_owner: owner, repo_name: repo, repo_branch: branch, directory: dir }) });
+}
+
+export async function uninstallSkill(id: string): Promise<{ uninstalled: string; backup: string }> {
+  return req(`/skills/${id}`, { method: 'DELETE' });
+}
+
+export async function checkSkillUpdates(): Promise<{ outdated: InstalledSkill[]; count: number }> {
+  return req('/skills/updates');
+}
+
+export async function listSkillRepos(): Promise<{ repos: SkillRepoItem[] }> {
+  return req('/skills/repos');
+}
+
+export async function addSkillRepo(owner: string, name: string, branch: string): Promise<SkillRepoItem> {
+  return req('/skills/repos', { method: 'POST', body: JSON.stringify({ owner, name, branch }) });
+}
+
+export async function removeSkillRepo(owner: string, name: string): Promise<{ removed: string }> {
+  return req(`/skills/repos/${owner}/${name}`, { method: 'DELETE' });
 }
 
 // === Terminal ===
 
 export async function execTerminal(command: string, workdir?: string): Promise<{ output: string; error?: string }> {
   return req('/terminal', { method: 'POST', body: JSON.stringify({ command, workdir }) });
+}
+
+// === MCP Servers ===
+
+export interface MCPServer {
+  id: string; name: string; description: string;
+  command: string; args: string[]; env?: Record<string, string>;
+  enabled: boolean; status: string; error?: string;
+  tool_count: number; created_at: string; updated_at: string;
+}
+
+export interface MCPPreset {
+  name: string; description: string;
+  command: string; args: string[]; env: Record<string, string>;
+}
+
+export async function listMCPServers(): Promise<{ servers: MCPServer[] }> {
+  return req('/mcp/servers');
+}
+
+export async function createMCPServer(def: Partial<MCPServer>): Promise<MCPServer> {
+  return req('/mcp/servers', { method: 'POST', body: JSON.stringify(def) });
+}
+
+export async function getMCPServer(id: string): Promise<MCPServer> {
+  return req(`/mcp/servers/${id}`);
+}
+
+export async function updateMCPServer(id: string, def: Partial<MCPServer>): Promise<MCPServer> {
+  return req(`/mcp/servers/${id}`, { method: 'PUT', body: JSON.stringify(def) });
+}
+
+export async function deleteMCPServer(id: string): Promise<{ deleted: string }> {
+  return req(`/mcp/servers/${id}`, { method: 'DELETE' });
+}
+
+export async function restartMCPServer(id: string): Promise<MCPServer> {
+  return req(`/mcp/servers/${id}/restart`, { method: 'POST' });
+}
+
+export async function getMCPPresets(): Promise<{ presets: MCPPreset[] }> {
+  return req('/mcp/presets');
 }
 
 // === Git Review ===

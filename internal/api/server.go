@@ -15,9 +15,13 @@ import (
 
 	"github.com/yeshenlougu/codex/internal/agent"
 	"github.com/yeshenlougu/codex/internal/config"
+	"github.com/yeshenlougu/codex/internal/mcp"
 	"github.com/yeshenlougu/codex/internal/sandbox"
 	"github.com/yeshenlougu/codex/internal/schedule"
 	"github.com/yeshenlougu/codex/internal/session"
+	"github.com/yeshenlougu/codex/internal/skill"
+	"github.com/yeshenlougu/codex/internal/store"
+	"github.com/yeshenlougu/codex/internal/tool"
 )
 
 // Server is the HTTP/WebSocket API server.
@@ -30,15 +34,27 @@ type Server struct {
 	httpSrv   *http.Server
 	wsHub     *wsHub
 	addr      string
+
+	// MCP runtime management
+	mcpStore    *store.MCPStore
+	mcpClients  map[string]*mcp.MCPClient
+	mcpMu       sync.Mutex
+	mcpRegistry *tool.Registry // shared tool registry for MCP tools
+
+	// Skill management
+	skillStore     *store.SkillStore
+	skillInstaller *skill.Installer
 }
 
 // New creates a new API server.
 func New(cfg *config.Config, store *session.Store, addr string) *Server {
 	s := &Server{
-		cfg:   cfg,
-		store: store,
-		addr:  addr,
-		wsHub: newWSHub(),
+		cfg:         cfg,
+		store:       store,
+		addr:        addr,
+		wsHub:       newWSHub(),
+		mcpClients:  make(map[string]*mcp.MCPClient),
+		mcpRegistry: tool.NewRegistry(),
 	}
 	return s
 }
@@ -55,7 +71,36 @@ func (s *Server) Start() error {
 		log.Printf("[api] agent registry: %v", err)
 	}
 	s.manager = agent.NewManager(s.cfg, s.store, agRegistry)
+	// Inject shared MCP tool registry into manager for auto-injection into new agents
+	s.manager.SetMCPRegistry(s.mcpRegistry)
 	log.Printf("[api] agent manager ready — %d profiles loaded", len(agRegistry.List()))
+
+	// Initialize MCP store from persistent file
+	mcpStorePath := filepath.Join(expandHome("~/.codex"), "mcp-servers.json")
+	mcpStore, mcpErr := store.NewMCPStore(mcpStorePath)
+	if mcpErr != nil {
+		log.Printf("[api] MCP store init: %v", mcpErr)
+	} else {
+		s.mcpStore = mcpStore
+		// Start all enabled MCP servers
+		for _, def := range s.mcpStore.All() {
+			if def.Enabled {
+				s.startMCPClient(def)
+			}
+		}
+		log.Printf("[api] MCP store ready — %d servers loaded", len(s.mcpStore.All()))
+	}
+
+	// Initialize skill store and installer
+	skillStorePath := filepath.Join(expandHome("~/.codex"), "skill-store.json")
+	skillsDir := filepath.Join(expandHome("~/.codex"), "skills")
+	if skillStore, skErr := store.NewSkillStore(skillStorePath); skErr == nil {
+		s.skillStore = skillStore
+		s.skillInstaller = skill.NewInstaller(skillStore, skillsDir)
+		log.Printf("[api] skill store ready — %d installed, %d repos", len(skillStore.Skills()), len(skillStore.Repos()))
+	} else {
+		log.Printf("[api] skill store init: %v", skErr)
+	}
 
 	// Sandbox approval
 	sandbox.OnApprovalRequested = func(check sandbox.Check) {
@@ -103,7 +148,7 @@ func (s *Server) Start() error {
 	cors := func(h http.HandlerFunc) http.HandlerFunc {
 		return func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Access-Control-Allow-Origin", "*")
-			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, DELETE, OPTIONS")
+			w.Header().Set("Access-Control-Allow-Methods", "GET, POST, PUT, DELETE, OPTIONS")
 			w.Header().Set("Access-Control-Allow-Headers", "Content-Type")
 			if r.Method == "OPTIONS" {
 				w.WriteHeader(http.StatusNoContent)
@@ -173,7 +218,11 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/plugins/", cors(s.handlePlugins))
 
 	// Skills
-	mux.HandleFunc("/api/skills", cors(s.handleSkills))
+	mux.HandleFunc("/api/skills/", cors(s.handleSkillsExtended))
+
+	// MCP servers (runtime management)
+	mux.HandleFunc("/api/mcp/", cors(s.handleMCPServers))
+	mux.HandleFunc("/api/mcp", cors(s.handleMCPServers))
 
 	// Terminal
 	mux.HandleFunc("/api/terminal", cors(s.handleTerminal))
@@ -205,6 +254,14 @@ func (s *Server) Start() error {
 
 // Shutdown gracefully stops the server.
 func (s *Server) Shutdown(ctx context.Context) error {
+	// Close all MCP clients
+	s.mcpMu.Lock()
+	for id, client := range s.mcpClients {
+		client.Close()
+		delete(s.mcpClients, id)
+	}
+	s.mcpMu.Unlock()
+
 	// Close all agents
 	if s.manager != nil {
 		s.manager.ActiveSessions() // no-op, just ensuring it exists

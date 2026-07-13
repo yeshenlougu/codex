@@ -39,10 +39,24 @@ func (r *Registry) Register(t Tool) {
 	r.tools[t.Name()] = t
 }
 
+// Unregister removes a tool by name.
+func (r *Registry) Unregister(name string) {
+	delete(r.tools, name)
+}
+
 // Get retrieves a tool by name.
 func (r *Registry) Get(name string) (Tool, bool) {
 	t, ok := r.tools[name]
 	return t, ok
+}
+
+// AllTools returns all registered Tool instances (for copying to another registry).
+func (r *Registry) AllTools() map[string]Tool {
+	out := make(map[string]Tool, len(r.tools))
+	for k, v := range r.tools {
+		out[k] = v
+	}
+	return out
 }
 
 // List returns all registered tools as ToolDefs for the LLM.

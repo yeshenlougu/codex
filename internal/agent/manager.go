@@ -9,6 +9,7 @@ import (
 
 	"github.com/yeshenlougu/codex/internal/config"
 	"github.com/yeshenlougu/codex/internal/session"
+	"github.com/yeshenlougu/codex/internal/tool"
 )
 
 // Manager orchestrates multiple Agent instances in a chat-room model:
@@ -26,6 +27,9 @@ type Manager struct {
 
 	// Active agent instances: sessionID:agentName -> *Agent
 	active map[string]*Agent // key = sessionID + ":" + agentName
+
+	// Shared MCP tool registry (injected into every new agent)
+	mcpRegistry *tool.Registry
 }
 
 // NewManager creates an agent manager.
@@ -41,6 +45,11 @@ func NewManager(baseCfg *config.Config, store *session.Store, registry *Registry
 
 // Registry returns the agent profile registry.
 func (m *Manager) Registry() *Registry { return m.registry }
+
+// SetMCPRegistry injects a shared MCP tool registry for all new agents.
+func (m *Manager) SetMCPRegistry(reg *tool.Registry) {
+	m.mcpRegistry = reg
+}
 
 // agentKey builds the internal key for active agent lookup.
 func agentKey(sessionID, agentName string) string {
@@ -271,6 +280,14 @@ func (m *Manager) createAgentLocked(sessionID, agentName string) (*Agent, error)
 
 	cfg := profile.ApplyToConfig(m.baseCfg)
 	ag := New(cfg).WithStore(m.store)
+
+	// Inject shared MCP tools into this agent's registry
+	if m.mcpRegistry != nil {
+		for _, t := range m.mcpRegistry.AllTools() {
+			ag.registry.Register(t)
+		}
+	}
+
 	m.active[key] = ag
 	return ag, nil
 }
