@@ -520,6 +520,12 @@ func (srv *Server) handleConfigUpdate(w http.ResponseWriter, r *http.Request) {
 			changed = true
 		}
 	}
+	if v, ok := updates["api_key"]; ok {
+		if val, ok := v.(string); ok && val != "" {
+			srv.cfg.Provider.APIKey = val
+			changed = true
+		}
+	}
 
 	if !changed {
 		writeJSON(w, http.StatusOK, map[string]string{"status": "ok", "message": "no changes"})
