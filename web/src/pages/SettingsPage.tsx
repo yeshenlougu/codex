@@ -2,17 +2,16 @@ import { useState, useMemo } from 'react';
 import { Layout, Input, Typography, Button } from 'antd';
 import {
   ArrowLeftOutlined, SearchOutlined, SettingOutlined,
-  TeamOutlined, ApiOutlined, ThunderboltOutlined,
+  TeamOutlined, ApiOutlined,
 } from '@ant-design/icons';
 import AgentSettings from './settings/AgentSettings';
 import AgentManager from './settings/AgentManager';
 import ProviderSettings from './settings/ProviderSettings';
-import BackendsSettings from './settings/BackendsSettings';
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
-type SubPage = 'general' | 'agents' | 'provider' | 'backends';
+type SubPage = 'general' | 'agents' | 'provider';
 
 interface Category {
   label: string;
@@ -30,8 +29,7 @@ const categories: Category[] = [
   {
     label: 'Infrastructure',
     items: [
-      { key: 'provider', label: 'Provider', icon: <ApiOutlined /> },
-      { key: 'backends', label: 'Backends', icon: <ThunderboltOutlined /> },
+      { key: 'provider', label: 'Provider & Backends', icon: <ApiOutlined /> },
     ],
   },
 ];
@@ -106,8 +104,7 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
       <Content style={{ overflow: 'auto', padding: 0, background: 'var(--bg-root)' }}>
         {sub === 'general' && <AgentSettings />}
         {sub === 'agents' && <AgentManager />}
-        {sub === 'provider' && <ProviderSettings onNavigateBackends={() => setSub('backends')} />}
-        {sub === 'backends' && <BackendsSettings />}
+        {sub === 'provider' && <ProviderSettings />}
       </Content>
     </Layout>
   );
