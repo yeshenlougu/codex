@@ -124,7 +124,7 @@ export interface CapabilityInfo {
   icon: string;
   desc: string;
   enabled: boolean;
-  backends?: BackendStatus[];
+  backends?: string[];
 }
 export interface BackendPoolStatus {
   backends: BackendStatus[];

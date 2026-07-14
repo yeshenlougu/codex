@@ -518,7 +518,10 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
             )}
             <div style={{ flex: 1 }} />
             <Text type="secondary" style={{ fontSize: 10, color: 'var(--text-muted)' }}>
-              {activeAgentProfile?.model?.model || 'deepseek-v4-pro'} · 完全访问
+              🤖 {activeAgent === 'default' ? 'Default Agent' : activeAgent}
+              {' · '}
+              {activeAgentProfile?.model?.provider || 'cc-switch'} / {activeAgentProfile?.model?.model || 'deepseek-v4-pro'}
+              {' · 完全访问'}
             </Text>
           </div>
         </div>

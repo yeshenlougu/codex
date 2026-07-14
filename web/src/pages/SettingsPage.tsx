@@ -2,15 +2,16 @@ import { useState, useMemo } from 'react';
 import { Layout, Input, Typography, Button } from 'antd';
 import {
   ArrowLeftOutlined, SearchOutlined, SettingOutlined,
-  TeamOutlined,
+  TeamOutlined, ApiOutlined,
 } from '@ant-design/icons';
 import AgentSettings from './settings/AgentSettings';
 import AgentManager from './settings/AgentManager';
+import BackendsSettings from './settings/BackendsSettings';
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
-type SubPage = 'general' | 'agents';
+type SubPage = 'general' | 'agents' | 'backends';
 
 interface Category {
   label: string;
@@ -23,6 +24,12 @@ const categories: Category[] = [
     items: [
       { key: 'general', label: 'General', icon: <SettingOutlined /> },
       { key: 'agents', label: 'Agents', icon: <TeamOutlined /> },
+    ],
+  },
+  {
+    label: 'Infrastructure',
+    items: [
+      { key: 'backends', label: 'Backends', icon: <ApiOutlined /> },
     ],
   },
 ];
@@ -94,11 +101,10 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
         </div>
       </Sider>
 
-      <Content style={{ overflow: 'auto', padding: 24, background: 'var(--bg-root)' }}>
-        <div style={{ maxWidth: 640 }}>
-          {sub === 'general' && <AgentSettings />}
-          {sub === 'agents' && <AgentManager />}
-        </div>
+      <Content style={{ overflow: 'auto', padding: 0, background: 'var(--bg-root)' }}>
+        {sub === 'general' && <AgentSettings />}
+        {sub === 'agents' && <AgentManager />}
+        {sub === 'backends' && <BackendsSettings />}
       </Content>
     </Layout>
   );
