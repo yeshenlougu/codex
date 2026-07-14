@@ -89,6 +89,29 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
     setSending(false); setStreaming('');
   };
 
+  // Execute a task via SSE agent (defined before sendOne so it's available)
+  const execOne = useCallback(async (taskNum: number) => {
+    setSending(true);
+    setActiveExecTask(taskNum);
+    let streamingText = '';
+    setStreaming('');
+    await executeTask(taskNum, sessionId, activeAgent !== 'default' ? activeAgent : undefined,
+      chunk => { streamingText += chunk; setStreaming(streamingText); },
+      result => {
+        setStreaming('');
+        setActiveExecTask(null);
+        setMessages(prev => [...prev, { role: 'assistant' as const, content: result || streamingText, agent: activeAgent }]);
+        setSending(false);
+      },
+      err => {
+        setStreaming('');
+        setActiveExecTask(null);
+        setSending(false);
+        setMessages(prev => [...prev, { role: 'assistant' as const, content: `❌ Execution error: ${err}`, agent: activeAgent }]);
+      },
+    );
+  }, [sessionId, activeAgent]);
+
   // Send a single message (called from queue or direct)
   const sendOne = useCallback(async (text: string) => {
     const fileMatches = text.match(/[\w./-]+\.\w{1,6}/g) || [];
@@ -164,29 +187,6 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
     } : q));
     setSending(false);
   }, [sendOne]);
-
-  // Execute a task via SSE agent
-  const execOne = useCallback(async (taskNum: number) => {
-    setSending(true);
-    setActiveExecTask(taskNum);
-    let streamingText = '';
-    setStreaming('');
-    await executeTask(taskNum, sessionId, activeAgent !== 'default' ? activeAgent : undefined,
-      chunk => { streamingText += chunk; setStreaming(streamingText); },
-      result => {
-        setStreaming('');
-        setActiveExecTask(null);
-        setMessages(prev => [...prev, { role: 'assistant' as const, content: result || streamingText, agent: activeAgent }]);
-        setSending(false);
-      },
-      err => {
-        setStreaming('');
-        setActiveExecTask(null);
-        setSending(false);
-        setMessages(prev => [...prev, { role: 'assistant' as const, content: `❌ Execution error: ${err}`, agent: activeAgent }]);
-      },
-    );
-  }, [sessionId, activeAgent]);
 
   const handleSend = useCallback(() => {
     const text = input.trim();

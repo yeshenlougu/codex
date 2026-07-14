@@ -1,4 +1,4 @@
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { ConfigProvider, theme } from 'antd';
 import { ThemeProvider, useTheme } from './lib/ThemeContext';
 import TitleBar from './components/TitleBar';

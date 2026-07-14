@@ -125,7 +125,6 @@ func BuiltinDefaultProfile() *AgentProfile {
 		Avatar:      "🤖",
 		Model: ProfileModelConfig{
 			Provider:        "openai",
-			Model:           "gpt-4o",
 			ReasoningEffort: "high",
 		},
 		Agent: config.AgentConfig{

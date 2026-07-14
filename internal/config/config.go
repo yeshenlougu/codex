@@ -123,7 +123,6 @@ func DefaultConfig() *Config {
 	return &Config{
 		Model: ModelConfig{
 			Provider:        "openai",
-			Model:           "gpt-4o",
 			ReasoningEffort: "high",
 		},
 		Tools: ToolsConfig{
