@@ -79,6 +79,57 @@ type ModelEntry struct {
 	ContextLength int    `yaml:"context_length,omitempty" json:"context_length,omitempty"`
 }
 
+// ── Multi-Provider support (§SPEC-CCSWITCH Phase 1) ──
+
+// Provider is a named AI vendor configuration, inspired by cc-switch.
+// Each Provider owns zero or more Backends and carries metadata
+// (category, icon, pricing limits, API format hints).
+type Provider struct {
+	ID              string         `yaml:"id" json:"id"`                               // UUID
+	Name            string         `yaml:"name" json:"name"`                           // display name
+	Icon            string         `yaml:"icon,omitempty" json:"icon,omitempty"`       // icon identifier
+	IconColor       string         `yaml:"icon_color,omitempty" json:"icon_color,omitempty"`
+	Category        string         `yaml:"category,omitempty" json:"category,omitempty"` // "official" | "third_party" | "partner"
+	Notes           string         `yaml:"notes,omitempty" json:"notes,omitempty"`
+	InFailoverQueue bool           `yaml:"in_failover_queue" json:"in_failover_queue"`
+	Backends        []BackendConfig `yaml:"backends,omitempty" json:"backends,omitempty"`
+	Meta            ProviderMeta   `yaml:"meta,omitempty" json:"meta,omitempty"`
+	CreatedAt       int64          `yaml:"created_at" json:"created_at"`
+}
+
+// ProviderMeta carries optional extended configuration (cc-switch compatible subset).
+type ProviderMeta struct {
+	APIFormat            string `yaml:"api_format,omitempty" json:"api_format,omitempty"` // "anthropic" | "openai_chat" | "openai_responses"
+	CostMultiplier       string `yaml:"cost_multiplier,omitempty" json:"cost_multiplier,omitempty"`
+	LimitDailyUSD        string `yaml:"limit_daily_usd,omitempty" json:"limit_daily_usd,omitempty"`
+	LimitMonthlyUSD      string `yaml:"limit_monthly_usd,omitempty" json:"limit_monthly_usd,omitempty"`
+	IsFullURL            bool   `yaml:"is_full_url,omitempty" json:"is_full_url,omitempty"`
+	EndpointAutoSelect   bool   `yaml:"endpoint_auto_select,omitempty" json:"endpoint_auto_select,omitempty"`
+	PromptCacheKey       string `yaml:"prompt_cache_key,omitempty" json:"prompt_cache_key,omitempty"`
+	MaxOutputTokens      int    `yaml:"max_output_tokens,omitempty" json:"max_output_tokens,omitempty"`
+	CustomUserAgent      string `yaml:"custom_user_agent,omitempty" json:"custom_user_agent,omitempty"`
+}
+
+// ProviderPreset is a pre-defined template for creating a Provider.
+type ProviderPreset struct {
+	Name        string `json:"name"`
+	Category    string `json:"category"` // "official" | "third_party" | "partner"
+	Icon        string `json:"icon,omitempty"`
+	IconColor   string `json:"icon_color,omitempty"`
+	WebsiteURL  string `json:"website_url,omitempty"`
+	APIKeyURL   string `json:"api_key_url,omitempty"`
+	BaseURL     string `json:"base_url"`
+	DefaultModel string `json:"default_model,omitempty"`
+	WireAPI     string `json:"wire_api,omitempty"` // "chat_completions" | "responses"
+	Description string `json:"description,omitempty"`
+}
+
+// ProviderStorage is the persisted provider registry.
+type ProviderStorage struct {
+	Providers []Provider `yaml:"providers" json:"providers"`
+	Current   string     `yaml:"current" json:"current"` // currently active provider ID
+}
+
 // MCPConfig configures Model Context Protocol servers.
 type MCPConfig struct {
 	Servers []MCPServerConfig `yaml:"servers" json:"servers"`

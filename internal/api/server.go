@@ -44,6 +44,9 @@ type Server struct {
 	// Skill management
 	skillStore     *store.SkillStore
 	skillInstaller *skill.Installer
+
+	// Multi-Provider management (§SPEC-CCSWITCH Phase 1)
+	providerStore *store.ProviderStore
 }
 
 // New creates a new API server.
@@ -100,6 +103,26 @@ func (s *Server) Start() error {
 		log.Printf("[api] skill store ready — %d installed, %d repos", len(skillStore.Skills()), len(skillStore.Repos()))
 	} else {
 		log.Printf("[api] skill store init: %v", skErr)
+	}
+
+	// Initialize multi-provider store
+	providerStorePath := filepath.Join(expandHome("~/.codex"), "providers.json")
+	ps, psErr := store.NewProviderStore(providerStorePath)
+	if psErr != nil {
+		log.Printf("[api] provider store init: %v", psErr)
+	} else {
+		s.providerStore = ps
+		p := s.providerStore.Current()
+		count := len(s.providerStore.All())
+		currentName := "(none)"
+		if p != nil {
+			currentName = p.Name
+			// If current provider has backends, sync to config for Pool
+			if len(p.Backends) > 0 {
+				s.cfg.Provider.Backends = p.Backends
+			}
+		}
+		log.Printf("[api] provider store ready — %d providers, current: %s", count, currentName)
 	}
 
 	// Sandbox approval
@@ -191,6 +214,10 @@ func (s *Server) Start() error {
 	// Backend pool (cc-switch replacement)
 	mux.HandleFunc("/api/backends", cors(s.handleBackends))
 	mux.HandleFunc("/api/backends/", cors(s.handleBackends))
+
+	// Multi-Provider management (§SPEC-CCSWITCH Phase 1)
+	mux.HandleFunc("/api/providers", cors(s.handleProviders))
+	mux.HandleFunc("/api/providers/", cors(s.handleProviders))
 
 	// Model capabilities (auto-discovery)
 	mux.HandleFunc("/api/capabilities", cors(s.handleCapabilities))
