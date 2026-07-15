@@ -6,12 +6,13 @@ import {
 } from '@ant-design/icons';
 import AgentSettings from './settings/AgentSettings';
 import AgentManager from './settings/AgentManager';
+import ProviderList from './settings/ProviderList';
 import ProviderSettings from './settings/ProviderSettings';
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
-type SubPage = 'general' | 'agents' | 'provider';
+type SubPage = 'general' | 'agents' | 'providerList' | 'providerDetail';
 
 interface Category {
   label: string;
@@ -29,7 +30,7 @@ const categories: Category[] = [
   {
     label: 'Infrastructure',
     items: [
-      { key: 'provider', label: 'Provider & Backends', icon: <ApiOutlined /> },
+      { key: 'providerList', label: 'Providers', icon: <ApiOutlined /> },
     ],
   },
 ];
@@ -54,12 +55,17 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         <div style={{ padding: '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {onBack && (
+          {sub === 'providerDetail' ? (
+            <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setSub('providerList')}
+              style={{ alignSelf: 'flex-start', padding: '0 8px', fontSize: 12 }}>
+              返回供应商列表
+            </Button>
+          ) : onBack ? (
             <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}
               style={{ alignSelf: 'flex-start', padding: '0 8px', fontSize: 12 }}>
               返回
             </Button>
-          )}
+          ) : null}
           <Input
             prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
             placeholder="搜索设置..."
@@ -87,9 +93,11 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 16px', cursor: 'pointer', fontSize: 12,
                     margin: '0 6px', borderRadius: 6,
-                    background: sub === item.key ? 'var(--bg-active)' : 'transparent',
-                    color: sub === item.key ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    fontWeight: sub === item.key ? 500 : 400,
+                    background: (sub === item.key || (item.key === 'providerList' && sub === 'providerDetail'))
+                      ? 'var(--bg-active)' : 'transparent',
+                    color: (sub === item.key || (item.key === 'providerList' && sub === 'providerDetail'))
+                      ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    fontWeight: (sub === item.key || (item.key === 'providerList' && sub === 'providerDetail')) ? 500 : 400,
                   }}
                 >
                   <span style={{ fontSize: 14, opacity: 0.7 }}>{item.icon}</span>
@@ -104,7 +112,10 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
       <Content style={{ overflow: 'auto', padding: 0, background: 'var(--bg-root)' }}>
         {sub === 'general' && <AgentSettings />}
         {sub === 'agents' && <AgentManager />}
-        {sub === 'provider' && <ProviderSettings />}
+        {sub === 'providerList' && (
+          <ProviderList onSelect={() => setSub('providerDetail')} />
+        )}
+        {sub === 'providerDetail' && <ProviderSettings />}
       </Content>
     </Layout>
   );

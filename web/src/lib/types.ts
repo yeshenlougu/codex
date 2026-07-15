@@ -146,3 +146,82 @@ export interface ImportResult {
   count: number;
   file?: string;
 }
+
+// === Multi-Provider types (§SPEC-CCSWITCH Phase 2) ===
+
+export interface ProviderSummary {
+  id: string;
+  name: string;
+  icon?: string;
+  icon_color?: string;
+  category?: string;
+  backend_count: number;
+  in_failover_queue: boolean;
+  is_current: boolean;
+}
+
+export interface ProviderDetail {
+  id: string;
+  name: string;
+  icon?: string;
+  icon_color?: string;
+  category?: string;
+  notes?: string;
+  in_failover_queue: boolean;
+  backends: BackendConfig[];
+  meta?: ProviderMeta;
+  created_at: number;
+}
+
+export interface ProviderMeta {
+  api_format?: string;
+  cost_multiplier?: string;
+  limit_daily_usd?: string;
+  limit_monthly_usd?: string;
+  is_full_url?: boolean;
+  endpoint_auto_select?: boolean;
+  prompt_cache_key?: string;
+  max_output_tokens?: number;
+  custom_user_agent?: string;
+}
+
+export interface ProviderPreset {
+  name: string;
+  category: string;
+  icon?: string;
+  icon_color?: string;
+  website_url?: string;
+  api_key_url?: string;
+  base_url: string;
+  default_model?: string;
+  wire_api?: string;
+  description?: string;
+}
+
+export interface ProviderListResponse {
+  providers: ProviderSummary[];
+  current: string;
+}
+
+export interface ProviderListDetailResponse {
+  providers: ProviderDetail[];
+  current: string;
+}
+
+export interface SwitchProviderResponse {
+  status: string;
+  current: string;
+  backends: number;
+}
+
+export interface ProbeResult {
+  label: string;
+  status: string;
+  error?: string;
+}
+
+export interface ProbeResponse {
+  provider: string;
+  results: ProbeResult[];
+  total: number;
+}

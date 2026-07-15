@@ -1,4 +1,4 @@
-import type { SessionSummary, Session, ChatResponse, Config, BackendPoolStatus, BackendConfig, ImportResult, WSMessage } from './types';
+import type { SessionSummary, Session, ChatResponse, Config, BackendPoolStatus, BackendConfig, ImportResult, WSMessage, ProviderSummary, ProviderDetail, ProviderPreset, ProviderListResponse, SwitchProviderResponse, ProbeResponse } from './types';
 
 const BASE = '/api';
 
@@ -379,4 +379,38 @@ export async function getGitStatus(): Promise<{ branch: string; status: string; 
 
 export async function getGitDiff(files?: string[]): Promise<{ diff: string; error?: string }> {
   return req('/git/diff', { method: 'POST', body: JSON.stringify({ files: files || [] }) });
+}
+
+// === Multi-Provider (§SPEC-CCSWITCH Phase 2) ===
+
+export async function listProviders(): Promise<ProviderListResponse> {
+  return req('/providers');
+}
+
+export async function getProviderPresets(): Promise<{ presets: ProviderPreset[] }> {
+  return req('/providers/presets');
+}
+
+export async function createProvider(data: Partial<ProviderDetail>): Promise<{ status: string; provider: ProviderDetail }> {
+  return req('/providers', { method: 'POST', body: JSON.stringify(data) });
+}
+
+export async function updateProvider(id: string, data: Partial<ProviderDetail>): Promise<{ status: string }> {
+  return req(`/providers/${id}`, { method: 'PUT', body: JSON.stringify(data) });
+}
+
+export async function deleteProvider(id: string): Promise<{ status: string }> {
+  return req(`/providers/${id}`, { method: 'DELETE' });
+}
+
+export async function switchProvider(id: string): Promise<SwitchProviderResponse> {
+  return req(`/providers/${id}/switch`, { method: 'POST' });
+}
+
+export async function probeProvider(id: string): Promise<ProbeResponse> {
+  return req(`/providers/${id}/probe`, { method: 'POST' });
+}
+
+export async function createFromPreset(presetName: string, name: string, apiKey: string): Promise<{ status: string; provider: ProviderDetail }> {
+  return req('/providers/from-preset', { method: 'POST', body: JSON.stringify({ preset_name: presetName, name, api_key: apiKey }) });
 }
