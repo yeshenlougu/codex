@@ -729,6 +729,57 @@ func (s *Store) DeleteMCPServer(name string) error {
 	return err
 }
 
+// ── Scheduled Jobs ──────────────────────────────────────────────────────
+
+// JobRow mirrors the scheduled_jobs table.
+type JobRow struct {
+	ID        int    `json:"id"`
+	Name      string `json:"name"`
+	CronExpr  string `json:"cron_expr"`
+	Prompt    string `json:"prompt"`
+	AgentName string `json:"agent_name"`
+	Enabled   bool   `json:"enabled"`
+	LastRun   int64  `json:"last_run"`
+	NextRun   int64  `json:"next_run"`
+	CreatedAt int64  `json:"created_at"`
+	UpdatedAt int64  `json:"updated_at"`
+}
+
+// ListJobs returns all scheduled jobs.
+func (s *Store) ListJobs() ([]JobRow, error) {
+	rows, err := s.db.Query(`SELECT id, name, cron_expr, prompt, agent_name, enabled, last_run, next_run, created_at, updated_at FROM scheduled_jobs ORDER BY id`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []JobRow
+	for rows.Next() {
+		var j JobRow
+		if err := rows.Scan(&j.ID, &j.Name, &j.CronExpr, &j.Prompt, &j.AgentName, &j.Enabled, &j.LastRun, &j.NextRun, &j.CreatedAt, &j.UpdatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, j)
+	}
+	return out, rows.Err()
+}
+
+// CreateJob inserts a new scheduled job.
+func (s *Store) CreateJob(name, cronExpr, prompt, agentName string) (int64, error) {
+	now := time.Now().Unix()
+	res, err := s.db.Exec(`INSERT INTO scheduled_jobs (name, cron_expr, prompt, agent_name, enabled, created_at, updated_at) VALUES (?,?,?,?,1,?,?)`,
+		name, cronExpr, prompt, agentName, now, now)
+	if err != nil {
+		return 0, err
+	}
+	return res.LastInsertId()
+}
+
+// DeleteJob removes a scheduled job.
+func (s *Store) DeleteJob(id int) error {
+	_, err := s.db.Exec(`DELETE FROM scheduled_jobs WHERE id = ?`, id)
+	return err
+}
+
 // ── Usage ─────────────────────────────────────────────────────────────────
 
 // UsageLogInput is the data for a single API call.
