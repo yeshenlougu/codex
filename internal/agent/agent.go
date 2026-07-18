@@ -23,7 +23,8 @@ import (
 type Agent struct {
 	cfg      *config.Config
 	registry *tool.Registry
-	pool     *provider.Pool // multi-endpoint pool (replaces external cc-switch)
+	pool     *provider.Pool      // multi-endpoint pool (replaces external cc-switch)
+	router   *provider.ProviderRouter // multi-provider failover (per SPEC §3.5)
 	store    *session.Store
 	skills   *skill.Registry
 	hooks    *hook.Runner
@@ -44,18 +45,8 @@ type Agent struct {
 func New(cfg *config.Config, agentName string) *Agent {
 	registry := tool.NewRegistry()
 
-	// ---- Built-in tools ----
-	registry.Register(tool.NewShellTool())
-	registry.Register(tool.NewFileReadTool())
-	registry.Register(tool.NewFileEditTool())
-	registry.Register(tool.NewWriteFileTool())
-	registry.Register(tool.NewGrepTool())
-	registry.Register(tool.NewLsTool())
-	registry.Register(tool.NewGitTool())
-	registry.Register(tool.NewWebFetchTool())
-	registry.Register(tool.NewGitWorktreeTool())
-	imgTool := tool.NewImageGenTool()
-	registry.Register(imgTool)
+	// ── Built-in tools (always registered; can be filtered later via WithTools) ──
+	registerBuiltinTools(registry)
 
 	// ---- Plugin tools (.plugin.json files) ----
 	for _, dir := range cfg.Plugins.Dirs {
@@ -116,8 +107,12 @@ func New(cfg *config.Config, agentName string) *Agent {
 
 	// Wire image generation tool to pool's image_gen backends
 	if entry, _, ok := pool.SelectFor(provider.ModelImageGen); ok {
-		imgTool.SetBackend(entry.BaseURL, entry.Key, cfg.Model.Model)
-		log.Printf("[agent] image_gen backend: %s (%s)", entry.BaseURL, entry.Label)
+		if imgT, exists := registry.Get("image_gen"); exists {
+			if imgTool, ok := imgT.(*tool.ImageGenTool); ok {
+				imgTool.SetBackend(entry.BaseURL, entry.Key, cfg.Model.Model)
+				log.Printf("[agent] image_gen backend: %s (%s)", entry.BaseURL, entry.Label)
+			}
+		}
 	}
 
 	// ── System prompt with soul.md + skills ──
@@ -275,6 +270,19 @@ func (a *Agent) WithSkills(skills *skill.Registry) *Agent {
 	return a
 }
 
+// WithTools applies tool filtering from a data store (per SPEC §4.3).
+// Currently applies no filtering as tools config is loaded at agent creation time.
+func (a *Agent) WithTools(ds ToolDataStore) *Agent {
+	_ = ds
+	return a
+}
+
+// WithRouter sets the multi-provider failover router.
+func (a *Agent) WithRouter(router *provider.ProviderRouter) *Agent {
+	a.router = router
+	return a
+}
+
 // LoadSession restores a session from the store.
 func (a *Agent) LoadSession(id string) error {
 	if a.store == nil {
@@ -304,10 +312,17 @@ func (a *Agent) SessionID() string { return a.sessionID }
 
 // resolveClient selects a backend and creates a fresh Client for this request.
 // Returns the client and the selected entry (for marking success/failure).
+// Falls back through the ProviderRouter when all backends are exhausted.
 func (a *Agent) resolveClient() (*provider.Client, *provider.PoolEntry) {
 	entry, ok := a.pool.Select()
 	if !ok {
-		// Fallback: bare client with global config
+		// ── Try router failover ──
+		if a.router != nil {
+			if failoverEntry, switched := a.router.SelectBackend(a.pool); switched && failoverEntry != nil {
+				return provider.NewClientFromEntry(failoverEntry, a.cfg.Model.Model), failoverEntry
+			}
+		}
+		// Last resort: bare client with global config
 		return provider.NewClient(a.cfg.Provider.BaseURL, a.cfg.Provider.APIKey, a.cfg.Model.Model), nil
 	}
 	return provider.NewClientFromEntry(entry, a.cfg.Model.Model), entry

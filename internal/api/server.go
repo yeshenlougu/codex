@@ -80,6 +80,8 @@ func (s *Server) Start() error {
 	s.manager = agent.NewManager(s.cfg, s.sessStore, agRegistry)
 	// Inject SQLite store for agent config loading (per SPEC Phase 0.5)
 	s.manager.SetDataStore(&agentStoreAdapter{s.store})
+	// Build and inject ProviderRouter for failover (per SPEC §3.5)
+	s.buildProviderRouter()
 	// Inject shared MCP tool registry into manager for auto-injection into new agents
 	s.manager.SetMCPRegistry(s.mcpRegistry)
 	log.Printf("[api] agent manager ready — %d profiles loaded", len(agRegistry.List()))

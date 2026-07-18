@@ -8,6 +8,7 @@ import (
 	"sync"
 
 	"github.com/yeshenlougu/codex/internal/config"
+	"github.com/yeshenlougu/codex/internal/provider"
 	"github.com/yeshenlougu/codex/internal/session"
 	"github.com/yeshenlougu/codex/internal/tool"
 )
@@ -24,6 +25,9 @@ type Manager struct {
 
 	// SQLite data store for agent configuration loading
 	dataStore AgentDataStore
+
+	// Multi-provider failover router
+	router *provider.ProviderRouter
 
 	// Chat rooms: key = session_id, value = set of agent profile names
 	roomAgents map[string]map[string]bool // sessionID -> {agentName: true}
@@ -71,9 +75,14 @@ func (m *Manager) SetMCPRegistry(reg *tool.Registry) {
 
 // SetDataStore injects a SQLite-backed agent data loader.
 // When set, agent configuration is loaded from the database first,
-// with the YAML registry as fallback.
+// SetDataStore injects a SQLite-backed agent data loader.
 func (m *Manager) SetDataStore(ds AgentDataStore) {
 	m.dataStore = ds
+}
+
+// SetRouter sets the multi-provider failover router.
+func (m *Manager) SetRouter(router *provider.ProviderRouter) {
+	m.router = router
 }
 
 // agentKey builds the internal key for active agent lookup.
@@ -333,6 +342,11 @@ func (m *Manager) createAgentLocked(sessionID, agentName string) (*Agent, error)
 		for _, t := range m.mcpRegistry.AllTools() {
 			ag.registry.Register(t)
 		}
+	}
+
+	// Inject failover router
+	if m.router != nil {
+		ag.WithRouter(m.router)
 	}
 
 	m.active[key] = ag

@@ -4,6 +4,7 @@ import (
 	"log"
 
 	"github.com/yeshenlougu/codex/internal/config"
+	"github.com/yeshenlougu/codex/internal/provider"
 	"github.com/yeshenlougu/codex/internal/store"
 )
 
@@ -139,11 +140,74 @@ func (s *Server) syncProvidersFromSQLite() {
 		log.Printf("[api] SQLite → Pool: %d backends synced from provider %q", len(bes), currentProvider.Name)
 	}
 
-	// Sync wire_api if set
 	if currentProvider.APIFormat != "" {
 		s.cfg.Provider.WireAPI = currentProvider.APIFormat
 	}
 
-	// Update model provider name
 	s.cfg.Model.Provider = currentProvider.Name
+}
+
+// buildProviderRouter reads all providers and their backends from SQLite
+// and builds a ProviderRouter for multi-provider failover.
+func (s *Server) buildProviderRouter() {
+	if s.store == nil || s.manager == nil {
+		return
+	}
+
+	providers, err := s.store.ListProviders()
+	if err != nil {
+		log.Printf("[api] provider router: list providers: %v", err)
+		return
+	}
+	if len(providers) == 0 {
+		return
+	}
+
+	router := provider.NewProviderRouter()
+	var refs []*provider.ProviderRef
+	var currentID string
+
+	for _, p := range providers {
+		if p.IsCurrent {
+			currentID = p.ID
+		}
+
+		backends, err := s.store.ListBackends(p.ID)
+		if err != nil {
+			log.Printf("[api] provider router: list backends for %s: %v", p.ID, err)
+			continue
+		}
+		_ = backends // used for metadata; actual entries built in pool
+
+		// Build lightweight refs with just the metadata needed for failover
+		refs = append(refs, &provider.ProviderRef{
+			ID:              p.ID,
+			Name:            p.Name,
+			InFailoverQueue: p.InFailoverQueue,
+			Backends:        nil, // populated lazily
+		})
+	}
+
+	// Build minimal pool from current provider's backends
+	currentBackends, _ := s.store.ListBackends(currentID)
+	currentPool := provider.NewPool("round_robin")
+	for _, be := range currentBackends {
+		currentPool.Add(be.APIKey, be.Label, be.BaseURL, be.Weight, nil)
+	}
+
+	router.SetProviders(refs, currentID, currentPool)
+	s.manager.SetRouter(router)
+
+	log.Printf("[api] provider router: %d providers, current=%s, %d in failover queue",
+		len(refs), currentID, countFailover(refs))
+}
+
+func countFailover(refs []*provider.ProviderRef) int {
+	n := 0
+	for _, r := range refs {
+		if r.InFailoverQueue {
+			n++
+		}
+	}
+	return n
 }
