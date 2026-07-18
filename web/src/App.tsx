@@ -7,9 +7,10 @@ import ChatPage from './pages/ChatPage';
 import SettingsPage from './pages/SettingsPage';
 import ScheduledPage from './pages/ScheduledPage';
 import PluginsPage from './pages/PluginsPage';
+import UsagePage from './pages/UsagePage';
 import RightPanel from './components/RightPanel';
 
-export type Page = 'chat' | 'settings' | 'scheduled' | 'plugins';
+export type Page = 'chat' | 'settings' | 'scheduled' | 'plugins' | 'usage';
 export type RightTab = 'review' | 'terminal' | 'browser' | 'files' | 'sidetasks';
 
 function AppContent() {
@@ -99,6 +100,7 @@ function AppContent() {
           {page === 'settings' && <SettingsPage onBack={() => setPage('chat')} />}
           {page === 'scheduled' && <ScheduledPage />}
           {page === 'plugins' && <PluginsPage />}
+          {page === 'usage' && <UsagePage />}
         </div>
         {/* Right panel: hidden on full pages */}
         {!isFullPage && rightOpen && (

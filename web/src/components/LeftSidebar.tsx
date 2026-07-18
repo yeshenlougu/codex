@@ -3,7 +3,7 @@ import { Layout, Button, Modal, Input, Space, Typography, Tooltip } from 'antd';
 import {
   FolderOpenOutlined, FolderAddOutlined, DeleteOutlined,
   HomeOutlined, EditOutlined, ClockCircleOutlined, AppstoreOutlined,
-  SettingOutlined, DownOutlined, BulbOutlined,
+  BarChartOutlined, SettingOutlined, DownOutlined, BulbOutlined,
 } from '@ant-design/icons';
 import type { SessionSummary } from '../lib/types';
 import { listSessions, deleteSession, listFiles } from '../lib/api';
@@ -166,6 +166,7 @@ export default function LeftSidebar(props: Props) {
     { key: 'chat', label: '新建任务', icon: <EditOutlined /> },
     { key: 'scheduled', label: '已安排', icon: <ClockCircleOutlined /> },
     { key: 'plugins', label: '插件', icon: <AppstoreOutlined /> },
+    { key: 'usage', label: '用量', icon: <BarChartOutlined /> },
   ];
 
   return (
