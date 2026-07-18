@@ -109,25 +109,11 @@ func (s *Server) Start() error {
 		log.Printf("[api] skill store init: %v", skErr)
 	}
 
-	// Initialize multi-provider store
-	providerStorePath := filepath.Join(expandHome("~/.codex"), "providers.json")
-	ps, psErr := store.NewProviderStore(providerStorePath)
-	if psErr != nil {
-		log.Printf("[api] provider store init: %v", psErr)
-	} else {
-		s.providerStore = ps
-		p := s.providerStore.Current()
-		count := len(s.providerStore.All())
-		currentName := "(none)"
-		if p != nil {
-			currentName = p.Name
-			// If current provider has backends, sync to config for Pool
-			if len(p.Backends) > 0 {
-				s.cfg.Provider.Backends = p.Backends
-			}
-		}
-		log.Printf("[api] provider store ready — %d providers, current: %s", count, currentName)
-	}
+	// ── SQLite → Config sync: if providers exist in SQLite, use them as the
+	// authoritative source for the Provider Pool.  Otherwise fall back to
+	// config.yaml backends, and import them into SQLite if none exist yet.
+	s.migrateProvidersToSQLite()
+	s.syncProvidersFromSQLite()
 
 	// Sandbox approval
 	sandbox.OnApprovalRequested = func(check sandbox.Check) {
@@ -219,9 +205,17 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/backends", cors(s.handleBackends))
 	mux.HandleFunc("/api/backends/", cors(s.handleBackends))
 
-	// Multi-Provider management (§SPEC-CCSWITCH Phase 1)
+	// Multi-Provider management (§SPEC-CCSWITCH Phase 1 — now SQLite-backed)
 	mux.HandleFunc("/api/providers", cors(s.handleProviders))
-	mux.HandleFunc("/api/providers/", cors(s.handleProviders))
+	mux.HandleFunc("/api/providers/", cors(func(w http.ResponseWriter, r *http.Request) {
+		// Route /api/providers/:id/backends/:label to handleProviderBackends
+		path := strings.TrimPrefix(r.URL.Path, "/api/providers/")
+		if strings.Contains(path, "/backends") {
+			s.handleProviderBackends(w, r)
+			return
+		}
+		s.handleProviders(w, r)
+	}))
 
 	// Model capabilities (auto-discovery)
 	mux.HandleFunc("/api/capabilities", cors(s.handleCapabilities))
