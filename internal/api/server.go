@@ -225,6 +225,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/capabilities", cors(s.handleCapabilities))
 	mux.HandleFunc("/api/backends/models", cors(s.handleBackendModels))
 
+	// Usage stats (§SPEC Phase 2.4)
+	mux.HandleFunc("/api/usage", cors(s.handleUsage))
+	mux.HandleFunc("/api/usage/", cors(s.handleUsage))
+
 	// Workflow tasks (spec/plan/tasks)
 	mux.HandleFunc("/api/tasks", cors(s.handleListTasks))
 	mux.HandleFunc("/api/implement/", cors(s.handleImplementTask))

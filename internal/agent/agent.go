@@ -33,6 +33,9 @@ type Agent struct {
 	// Agent identity (per SPEC §4.2)
 	agentName string // profile name ("default", "test-agent", etc.)
 
+	// Usage logger (per SPEC Phase 2.4)
+	usageLog func(providerID string, backendID int, model string, inputTokens, outputTokens int, costEst float64)
+
 	// Session state
 	sessionID string
 	messages  []provider.Message
@@ -283,6 +286,12 @@ func (a *Agent) WithRouter(router *provider.ProviderRouter) *Agent {
 	return a
 }
 
+// WithUsageLog sets the usage logging callback (per SPEC Phase 2.4).
+func (a *Agent) WithUsageLog(fn func(providerID string, backendID int, model string, inputTokens, outputTokens int, costEst float64)) *Agent {
+	a.usageLog = fn
+	return a
+}
+
 // LoadSession restores a session from the store.
 func (a *Agent) LoadSession(id string) error {
 	if a.store == nil {
@@ -316,16 +325,32 @@ func (a *Agent) SessionID() string { return a.sessionID }
 func (a *Agent) resolveClient() (*provider.Client, *provider.PoolEntry) {
 	entry, ok := a.pool.Select()
 	if !ok {
-		// ── Try router failover ──
 		if a.router != nil {
 			if failoverEntry, switched := a.router.SelectBackend(a.pool); switched && failoverEntry != nil {
-				return provider.NewClientFromEntry(failoverEntry, a.cfg.Model.Model), failoverEntry
+				client := provider.NewClientFromEntry(failoverEntry, a.cfg.Model.Model)
+				a.attachUsageCallback(client)
+				return client, failoverEntry
 			}
 		}
-		// Last resort: bare client with global config
-		return provider.NewClient(a.cfg.Provider.BaseURL, a.cfg.Provider.APIKey, a.cfg.Model.Model), nil
+		client := provider.NewClient(a.cfg.Provider.BaseURL, a.cfg.Provider.APIKey, a.cfg.Model.Model)
+		a.attachUsageCallback(client)
+		return client, nil
 	}
-	return provider.NewClientFromEntry(entry, a.cfg.Model.Model), entry
+	client := provider.NewClientFromEntry(entry, a.cfg.Model.Model)
+	a.attachUsageCallback(client)
+	return client, entry
+}
+
+// attachUsageCallback wires the agent's usage logger to the client.
+func (a *Agent) attachUsageCallback(client *provider.Client) {
+	if a.usageLog == nil {
+		return
+	}
+	usageLog := a.usageLog
+	model := a.cfg.Model.Model
+	client.UsageCallback = func(inputTokens, outputTokens int, _ string) {
+		usageLog("", 0, model, inputTokens, outputTokens, 0)
+	}
 }
 
 // AddMessage appends a message.

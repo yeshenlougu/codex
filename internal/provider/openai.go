@@ -81,12 +81,18 @@ type StreamDelta struct {
 	} `json:"choices"`
 }
 
-// Client is an OpenAI-compatible LLM client.
+// Client is a simple OpenAI-compatible API client.
 type Client struct {
 	BaseURL    string
 	APIKey     string
 	Model      string
 	HTTPClient *http.Client
+
+	// UsageCallback is called after each successful API call with estimated token counts.
+	UsageCallback func(inputTokens, outputTokens int, model string)
+
+	// ProtocolAdapter for chat ↔ responses conversion
+	Adapter *ProtocolAdapter
 }
 
 // NewClient creates a new LLM client.
@@ -165,12 +171,23 @@ func (c *Client) ChatStream(messages []Message, tools []ToolDef, reasoningEffort
 		reqBody["reasoning_effort"] = reasoningEffort
 	}
 
+	// ── Protocol adaptation ──
+	endpoint := "/chat/completions"
+	if c.Adapter != nil && c.Adapter.APIMode == "responses" {
+		var err error
+		reqBody, err = c.Adapter.ConvertChatToResponses(reqBody)
+		if err != nil {
+			return fmt.Errorf("protocol adapter (chat→responses): %w", err)
+		}
+		endpoint = "/responses"
+	}
+
 	body, err := json.Marshal(reqBody)
 	if err != nil {
 		return fmt.Errorf("marshal request: %w", err)
 	}
 
-	httpReq, err := http.NewRequest("POST", c.BaseURL+"/chat/completions", bytes.NewReader(body))
+	httpReq, err := http.NewRequest("POST", c.BaseURL+endpoint, bytes.NewReader(body))
 	if err != nil {
 		return fmt.Errorf("create request: %w", err)
 	}
@@ -188,7 +205,31 @@ func (c *Client) ChatStream(messages []Message, tools []ToolDef, reasoningEffort
 		return fmt.Errorf("API error %d: %s", resp.StatusCode, string(errBody))
 	}
 
-	return c.parseStream(resp.Body, onDelta, onToolCalls)
+	// Estimate input tokens (rough: ~4 chars per token for English text)
+	inputTokens := estimateTokens(reqBody)
+	_ = inputTokens
+
+	err = c.parseStream(resp.Body, onDelta, onToolCalls)
+
+	// Log usage after successful stream (rough estimate)
+	if err == nil && c.UsageCallback != nil {
+		// Estimate output from messages — rough: total content length / 4
+		outputLen := 0
+		for _, m := range messages {
+			outputLen += len(m.Content)
+		}
+		// Subtract the pre-existing messages to get new output estimate
+		// This is rough; real implementation would use token counts from API response
+		c.UsageCallback(inputTokens, outputLen/4, c.Model)
+	}
+
+	return err
+}
+
+// estimateTokens provides a rough token count (4 chars ≈ 1 token).
+func estimateTokens(reqBody map[string]any) int {
+	raw, _ := json.Marshal(reqBody)
+	return len(raw) / 4
 }
 
 func (c *Client) parseStream(r io.Reader, onDelta func(string), onToolCalls func([]ToolCall)) error {

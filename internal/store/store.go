@@ -722,6 +722,79 @@ func (s *Store) LogUsage(u UsageLogInput) error {
 	return tx.Commit()
 }
 
+// ── Usage Queries ──────────────────────────────────────────────────────────
+
+// UsageSummary holds aggregated usage stats.
+type UsageSummary struct {
+	ProviderID   string  `json:"provider_id"`
+	ProviderName string  `json:"provider_name"`
+	Model        string  `json:"model"`
+	InputTokens  int     `json:"input_tokens"`
+	OutputTokens int     `json:"output_tokens"`
+	RequestCount int     `json:"request_count"`
+	CostEst      float64 `json:"cost_est"`
+}
+
+// UsageDaily returns daily aggregated usage for a date range.
+func (s *Store) UsageDaily(providerID, from, to string) ([]UsageSummary, error) {
+	query := `SELECT d.provider_id, COALESCE(p.name,''), d.model, d.input_tokens, d.output_tokens, d.request_count, d.cost_est
+		FROM usage_daily d
+		LEFT JOIN providers p ON d.provider_id = p.id
+		WHERE 1=1`
+	args := []interface{}{}
+	if providerID != "" {
+		query += " AND d.provider_id = ?"
+		args = append(args, providerID)
+	}
+	if from != "" {
+		query += " AND d.date >= ?"
+		args = append(args, from)
+	}
+	if to != "" {
+		query += " AND d.date <= ?"
+		args = append(args, to)
+	}
+	query += " ORDER BY d.date DESC, d.provider_id, d.model"
+
+	rows, err := s.db.Query(query, args...)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []UsageSummary
+	for rows.Next() {
+		var u UsageSummary
+		if err := rows.Scan(&u.ProviderID, &u.ProviderName, &u.Model, &u.InputTokens, &u.OutputTokens, &u.RequestCount, &u.CostEst); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
+// UsageLogs returns recent usage log entries.
+func (s *Store) UsageLogs(limit int) ([]UsageLogInput, error) {
+	if limit <= 0 {
+		limit = 100
+	}
+	rows, err := s.db.Query(`SELECT provider_id, backend_id, model, input_tokens, output_tokens, cost_est FROM usage_logs ORDER BY id DESC LIMIT ?`, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []UsageLogInput
+	for rows.Next() {
+		var u UsageLogInput
+		if err := rows.Scan(&u.ProviderID, &u.BackendID, &u.Model, &u.InputTokens, &u.OutputTokens, &u.CostEst); err != nil {
+			return nil, err
+		}
+		out = append(out, u)
+	}
+	return out, rows.Err()
+}
+
 // ── Helpers ───────────────────────────────────────────────────────────────
 
 func boolToInt(b bool) int {

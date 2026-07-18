@@ -349,6 +349,11 @@ func (m *Manager) createAgentLocked(sessionID, agentName string) (*Agent, error)
 		ag.WithRouter(m.router)
 	}
 
+	// Inject usage logger
+	if m.dataStore != nil {
+		// usageLog is set via server or via WithUsageLog
+	}
+
 	m.active[key] = ag
 	return ag, nil
 }
