@@ -690,6 +690,45 @@ func (s *Store) ListMCPServers() ([]MCPServerRow, error) {
 	return out, rows.Err()
 }
 
+// ListAllMCPServers returns all MCP servers regardless of enabled state.
+func (s *Store) ListAllMCPServers() ([]MCPServerRow, error) {
+	rows, err := s.db.Query(`SELECT name, description, command, args, env, enabled, sort_order FROM mcp_servers ORDER BY sort_order`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []MCPServerRow
+	for rows.Next() {
+		var r MCPServerRow
+		if err := rows.Scan(&r.Name, &r.Description, &r.Command, &r.Args, &r.Env, &r.Enabled, &r.SortOrder); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// CreateMCPServer inserts a new MCP server.
+func (s *Store) CreateMCPServer(name, description, command, args, env string) error {
+	_, err := s.db.Exec(`INSERT OR REPLACE INTO mcp_servers (name, description, command, args, env, enabled, sort_order) VALUES (?, ?, ?, ?, ?, 1, 0)`,
+		name, description, command, args, env)
+	return err
+}
+
+// UpdateMCPServer updates an MCP server's configuration.
+func (s *Store) UpdateMCPServer(name, description, command, args, env string, enabled bool) error {
+	_, err := s.db.Exec(`UPDATE mcp_servers SET description=?, command=?, args=?, env=?, enabled=? WHERE name=?`,
+		description, command, args, env, boolToInt(enabled), name)
+	return err
+}
+
+// DeleteMCPServer removes an MCP server.
+func (s *Store) DeleteMCPServer(name string) error {
+	_, err := s.db.Exec(`DELETE FROM mcp_servers WHERE name = ?`, name)
+	return err
+}
+
 // ── Usage ─────────────────────────────────────────────────────────────────
 
 // UsageLogInput is the data for a single API call.

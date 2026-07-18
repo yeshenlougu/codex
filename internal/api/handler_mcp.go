@@ -87,9 +87,38 @@ func (s *Server) handleMCPServers(w http.ResponseWriter, r *http.Request) {
 	writeError(w, http.StatusNotFound, "not found")
 }
 
-// listMCPServers returns all MCP server definitions.
+// listMCPServers returns all MCP server definitions (SQLite + JSON).
 func (s *Server) listMCPServers(w http.ResponseWriter, r *http.Request) {
-	all := s.mcpStore.All()
+	allMap := s.mcpStore.All()
+	all := make([]*store.MCPServerDef, 0, len(allMap)+10)
+	for _, def := range allMap {
+		all = append(all, def)
+	}
+
+	// Merge SQLite MCP servers into the list
+	if s.store != nil {
+		dbServers, err := s.store.ListAllMCPServers()
+		if err == nil {
+			jsonNames := make(map[string]bool)
+			for _, def := range all {
+				jsonNames[def.Name] = true
+			}
+			for _, db := range dbServers {
+				if jsonNames[db.Name] {
+					continue
+				}
+				all = append(all, &store.MCPServerDef{
+					Name:        db.Name,
+					Description: db.Description,
+					Command:     db.Command,
+					Args:        store.ParseJSONList(db.Args),
+					Env:         map[string]string{},
+					Enabled:     db.Enabled,
+				})
+			}
+		}
+	}
+
 	items := make([]*MCPServerItem, 0, len(all))
 	for _, def := range all {
 		items = append(items, toItem(def))
