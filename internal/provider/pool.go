@@ -34,11 +34,15 @@ type PoolEntry struct {
 	LastFail    time.Time
 	LastSuccess time.Time
 	Cooldown    time.Duration
-	Models      []ModelInfo   // auto-discovered + manual override models
+	Models      []ModelInfo // auto-discovered + manual override models
 	mu          sync.RWMutex
+
+	// Circuit breaker (per SPEC §3.4)
+	breaker *CircuitBreaker
 }
 
 // IsAvailable returns true if the backend can accept requests.
+// Checks both health status and circuit breaker state.
 func (e *PoolEntry) IsAvailable() bool {
 	e.mu.RLock()
 	defer e.mu.RUnlock()
@@ -46,6 +50,12 @@ func (e *PoolEntry) IsAvailable() bool {
 	if e.Weight <= 0 {
 		return false
 	}
+
+	// Circuit breaker check (per SPEC §3.4)
+	if e.breaker != nil && !e.breaker.Allow() {
+		return false
+	}
+
 	if e.Health == HealthUnhealthy {
 		if time.Since(e.LastFail) > e.Cooldown {
 			return true // cooldown expired, will be probed
@@ -66,6 +76,10 @@ func (e *PoolEntry) MarkSuccess() {
 		e.Health = HealthHealthy
 		log.Printf("[pool] %s recovered → healthy", e.Label)
 	}
+	// Circuit breaker: record success
+	if e.breaker != nil {
+		e.breaker.RecordSuccess()
+	}
 }
 
 // MarkFailure records a failure. isRetryable=true for rate-limit/5xx, false for 4xx/auth.
@@ -81,6 +95,11 @@ func (e *PoolEntry) MarkFailure(isRetryable bool) {
 		log.Printf("[pool] %s unhealthy (failures=%d, cooldown=%v)", e.Label, e.Failures, e.Cooldown)
 	} else if e.Failures >= 1 {
 		e.Health = HealthDegraded
+	}
+
+	// Circuit breaker: record failure
+	if e.breaker != nil {
+		e.breaker.RecordFailure()
 	}
 }
 
@@ -154,7 +173,7 @@ func (p *Pool) Add(key, label, baseURL string, weight int, models []ModelInfo) {
 
 	p.manualModels[label] = models
 
-	p.entries = append(p.entries, &PoolEntry{
+	entry := &PoolEntry{
 		Key:      key,
 		Label:    label,
 		BaseURL:  baseURL,
@@ -162,7 +181,14 @@ func (p *Pool) Add(key, label, baseURL string, weight int, models []ModelInfo) {
 		Health:   HealthHealthy,
 		Cooldown: 30 * time.Second,
 		Models:   models, // start with manual models, auto-discovered models merged later
-	})
+		breaker:  NewCircuitBreaker(),
+	}
+	// Apply manual model overrides to breaker's health check
+	if len(models) > 0 {
+		entry.breaker.SetMaxFailures(5)
+	}
+
+	p.entries = append(p.entries, entry)
 }
 
 // Len returns the number of backends.

@@ -174,7 +174,7 @@ func main() {
 	}
 
 	// Create agent
-	ag := agent.New(cfg).WithStore(store).WithSkills(skillsRegistry)
+	ag := agent.New(cfg, "default").WithStore(store).WithSkills(skillsRegistry)
 	printBanner(cfg, skillsRegistry)
 
 	// --resume
@@ -450,7 +450,7 @@ func runInteractive(ag *agent.Agent) {
 			}
 			fmt.Println()
 		case input == "/clear":
-			ag = agent.New(ag.Config())
+			ag = agent.New(ag.Config(), ag.AgentName())
 			fmt.Println("Conversation cleared.")
 		case input == "/save":
 			fmt.Printf("Session %s auto-saved.\n", ag.SessionID())
@@ -649,7 +649,7 @@ func handlePlanCLI(cfg *config.Config, args []string) {
 			fmt.Fprintln(os.Stderr, "Error: No API key configured. Plan generation requires an LLM backend.")
 			os.Exit(1)
 		}
-		ag := agent.New(cfg)
+		ag := agent.New(cfg, "default")
 		prompt := fmt.Sprintf(workflow.PlanPromptTemplate, specFile)
 		fmt.Printf("📋 Generating plan from %s → PLAN.md ...\n", specFile)
 		result, err := ag.Run(prompt, func(chunk string) {

@@ -124,7 +124,6 @@ func BuiltinDefaultProfile() *AgentProfile {
 		Description: "The built-in system agent. Cannot be modified.",
 		Avatar:      "🤖",
 		Model: ProfileModelConfig{
-			Provider:        "openai",
 			ReasoningEffort: "high",
 		},
 		Agent: config.AgentConfig{

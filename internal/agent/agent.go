@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"log"
 	"os"
+	"path/filepath"
 	"strings"
 	"time"
 
@@ -28,6 +29,9 @@ type Agent struct {
 	hooks    *hook.Runner
 	mcpClients []*mcp.MCPClient
 
+	// Agent identity (per SPEC §4.2)
+	agentName string // profile name ("default", "test-agent", etc.)
+
 	// Session state
 	sessionID string
 	messages  []provider.Message
@@ -36,7 +40,8 @@ type Agent struct {
 }
 
 // New creates an Agent with all enabled tools, MCP servers, skills, plugins, and hooks.
-func New(cfg *config.Config) *Agent {
+// agentName identifies which profile this agent represents (used to load soul.md).
+func New(cfg *config.Config, agentName string) *Agent {
 	registry := tool.NewRegistry()
 
 	// ---- Built-in tools ----
@@ -115,8 +120,8 @@ func New(cfg *config.Config) *Agent {
 		log.Printf("[agent] image_gen backend: %s (%s)", entry.BaseURL, entry.Label)
 	}
 
-	// ---- System prompt with skills ----
-	systemPrompt := cfg.Agent.SystemPrompt + skills.SystemPrompt()
+	// ── System prompt with soul.md + skills ──
+	systemPrompt := buildSystemPrompt(cfg.Agent.SystemPrompt, agentName, skills)
 
 	return &Agent{
 		cfg:        cfg,
@@ -125,10 +130,64 @@ func New(cfg *config.Config) *Agent {
 		hooks:      hookRunner,
 		skills:     skills,
 		mcpClients: mcpClients,
+		agentName:  agentName,
 		messages: []provider.Message{
 			{Role: "system", Content: systemPrompt},
 		},
 	}
+}
+
+// buildSystemPrompt assembles the final system prompt per SPEC §4.4:
+//   [Agent Soul]
+//   <soul.md content>
+//
+//   [System]
+//   <system_prompt>
+//
+// followed by skill prompts when available.
+func buildSystemPrompt(systemPrompt, agentName string, skills *skill.Registry) string {
+	var sb strings.Builder
+
+	// 1. Agent Soul (from ~/.codex/agents/<name>/soul.md)
+	soul := loadSoul(agentName)
+	if soul != "" {
+		sb.WriteString("[Agent Soul]\n")
+		sb.WriteString(soul)
+		sb.WriteString("\n\n")
+	}
+
+	// 2. System prompt
+	sb.WriteString("[System]\n")
+	sb.WriteString(systemPrompt)
+
+	// 3. Skills
+	if skills != nil {
+		sb.WriteString(skills.SystemPrompt())
+	}
+
+	return sb.String()
+}
+
+// loadSoul reads the soul.md file for a named agent.
+// Returns empty string if the file doesn't exist or can't be read.
+func loadSoul(agentName string) string {
+	if agentName == "" {
+		return ""
+	}
+	home, err := os.UserHomeDir()
+	if err != nil {
+		return ""
+	}
+	path := filepath.Join(home, ".codex", "agents", agentName, "soul.md")
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "" // file not found or unreadable — no soul
+	}
+	content := strings.TrimSpace(string(data))
+	if content == "" {
+		return ""
+	}
+	return content
 }
 
 // expandHome replaces ~ with the user's home directory.
@@ -498,8 +557,11 @@ func (a *Agent) CompressContext(keepPairs int) {
 	a.messages = compressed
 }
 
-// Config returns the agent config.
+// Config returns the agent's configuration.
 func (a *Agent) Config() *config.Config { return a.cfg }
+
+// AgentName returns the agent profile name.
+func (a *Agent) AgentName() string { return a.agentName }
 
 // Messages returns conversation history.
 func (a *Agent) Messages() []provider.Message { return a.messages }

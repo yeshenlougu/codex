@@ -22,6 +22,9 @@ type Manager struct {
 	store    *session.Store
 	registry *Registry
 
+	// SQLite data store for agent configuration loading
+	dataStore AgentDataStore
+
 	// Chat rooms: key = session_id, value = set of agent profile names
 	roomAgents map[string]map[string]bool // sessionID -> {agentName: true}
 
@@ -30,6 +33,21 @@ type Manager struct {
 
 	// Shared MCP tool registry (injected into every new agent)
 	mcpRegistry *tool.Registry
+}
+
+// AgentRow is a minimal interface for SQLite agent row.
+type AgentRow struct {
+	Name         string
+	DisplayName  string
+	Provider     string
+	Model        string
+	SystemPrompt string
+	MaxTurns     int
+}
+
+// AgentDataStore is the interface for loading agent config from persistent storage.
+type AgentDataStore interface {
+	GetAgent(name string) (*AgentRow, error)
 }
 
 // NewManager creates an agent manager.
@@ -49,6 +67,13 @@ func (m *Manager) Registry() *Registry { return m.registry }
 // SetMCPRegistry injects a shared MCP tool registry for all new agents.
 func (m *Manager) SetMCPRegistry(reg *tool.Registry) {
 	m.mcpRegistry = reg
+}
+
+// SetDataStore injects a SQLite-backed agent data loader.
+// When set, agent configuration is loaded from the database first,
+// with the YAML registry as fallback.
+func (m *Manager) SetDataStore(ds AgentDataStore) {
+	m.dataStore = ds
 }
 
 // agentKey builds the internal key for active agent lookup.
@@ -273,13 +298,35 @@ func (m *Manager) createAgentLocked(sessionID, agentName string) (*Agent, error)
 		return m.active[key], nil
 	}
 
+	// Load agent profile from registry (YAML fallback)
 	profile := m.registry.Get(agentName)
 	if profile == nil {
 		return nil, fmt.Errorf("agent profile %q not found", agentName)
 	}
 
 	cfg := profile.ApplyToConfig(m.baseCfg)
-	ag := New(cfg).WithStore(m.store)
+
+	// ── Override with SQLite config when available ──
+	if m.dataStore != nil {
+		if dbAgent, err := m.dataStore.GetAgent(agentName); err == nil && dbAgent != nil {
+			if dbAgent.Provider != "" {
+				cfg.Model.Provider = dbAgent.Provider
+			}
+			if dbAgent.Model != "" {
+				cfg.Model.Model = dbAgent.Model
+			}
+			if dbAgent.SystemPrompt != "" {
+				cfg.Agent.SystemPrompt = dbAgent.SystemPrompt
+			}
+			if dbAgent.MaxTurns > 0 {
+				cfg.Agent.MaxTurns = dbAgent.MaxTurns
+			}
+			log.Printf("[manager] agent %q loaded from SQLite: provider=%s model=%s",
+				agentName, cfg.Model.Provider, cfg.Model.Model)
+		}
+	}
+
+	ag := New(cfg, agentName).WithStore(m.store)
 
 	// Inject shared MCP tools into this agent's registry
 	if m.mcpRegistry != nil {
