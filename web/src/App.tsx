@@ -8,9 +8,10 @@ import SettingsPage from './pages/SettingsPage';
 import ScheduledPage from './pages/ScheduledPage';
 import PluginsPage from './pages/PluginsPage';
 import UsagePage from './pages/UsagePage';
+import ToolsPage from './pages/ToolsPage';
 import RightPanel from './components/RightPanel';
 
-export type Page = 'chat' | 'settings' | 'scheduled' | 'plugins' | 'usage';
+export type Page = 'chat' | 'settings' | 'scheduled' | 'plugins' | 'usage' | 'tools';
 export type RightTab = 'review' | 'terminal' | 'browser' | 'files' | 'sidetasks';
 
 function AppContent() {
@@ -101,6 +102,7 @@ function AppContent() {
           {page === 'scheduled' && <ScheduledPage />}
           {page === 'plugins' && <PluginsPage />}
           {page === 'usage' && <UsagePage />}
+          {page === 'tools' && <ToolsPage />}
         </div>
         {/* Right panel: hidden on full pages */}
         {!isFullPage && rightOpen && (

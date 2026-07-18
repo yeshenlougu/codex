@@ -647,6 +647,17 @@ func (s *Store) ListTools(category string) ([]ToolRow, error) {
 	return out, rows.Err()
 }
 
+// UpdateTool updates tool metadata.
+func (s *Store) UpdateTool(name, description, risk string, approvalRequired, enabled bool) (bool, error) {
+	res, err := s.db.Exec(`UPDATE tools SET description=?, risk=?, approval_required=?, enabled=? WHERE name=?`,
+		description, risk, boolToInt(approvalRequired), boolToInt(enabled), name)
+	if err != nil {
+		return false, err
+	}
+	n, _ := res.RowsAffected()
+	return n > 0, nil
+}
+
 // ── MCP Servers ───────────────────────────────────────────────────────────
 
 // MCPServerRow mirrors the mcp_servers table.

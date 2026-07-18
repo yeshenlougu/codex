@@ -254,6 +254,10 @@ func (s *Server) Start() error {
 	mux.HandleFunc("/api/skills/", cors(s.handleSkillsExtended))
 	mux.HandleFunc("/api/skills", cors(s.handleSkillsExtended))
 
+	// Tools management (§SPEC Phase 3.2)
+	mux.HandleFunc("/api/tools", cors(s.handleTools))
+	mux.HandleFunc("/api/tools/", cors(s.handleTools))
+
 	// MCP servers (runtime management)
 	mux.HandleFunc("/api/mcp/", cors(s.handleMCPServers))
 	mux.HandleFunc("/api/mcp", cors(s.handleMCPServers))
