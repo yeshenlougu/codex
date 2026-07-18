@@ -166,6 +166,15 @@ func (s *Server) createMCPServer(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	// Write-through to SQLite
+	if s.store != nil {
+		argsJSON, _ := json.Marshal(input.Args)
+		envJSON, _ := json.Marshal(input.Env)
+		if err := s.store.CreateMCPServer(input.Name, input.Description, input.Command, string(argsJSON), string(envJSON)); err != nil {
+			log.Printf("[api] MCP SQLite write: %v", err)
+		}
+	}
+
 	// Start the client if enabled
 	if enabled {
 		s.startMCPClient(def)
@@ -226,9 +235,17 @@ func (s *Server) handleMCPServerByID(w http.ResponseWriter, r *http.Request, id 
 			return
 		}
 
+		// Write-through to SQLite
+		def, _ := s.mcpStore.Get(id)
+		if s.store != nil && def != nil {
+			argsJSON, _ := json.Marshal(def.Args)
+			envJSON, _ := json.Marshal(def.Env)
+			s.store.UpdateMCPServer(def.Name, def.Description, def.Command, string(argsJSON), string(envJSON), def.Enabled)
+		}
+
 		// Restart client with new config
 		s.stopMCPClient(id)
-		def, _ := s.mcpStore.Get(id)
+		def, _ = s.mcpStore.Get(id)
 		if def != nil && def.Enabled {
 			s.startMCPClient(def)
 		}
@@ -238,9 +255,17 @@ func (s *Server) handleMCPServerByID(w http.ResponseWriter, r *http.Request, id 
 
 	case http.MethodDelete:
 		s.stopMCPClient(id)
+		// Look up the name before removal (for SQLite write-through)
+		def, _ := s.mcpStore.Get(id)
 		if err := s.mcpStore.Remove(id); err != nil {
 			writeError(w, http.StatusNotFound, err.Error())
 			return
+		}
+		// Write-through delete to SQLite
+		if s.store != nil && def != nil {
+			if err := s.store.DeleteMCPServer(def.Name); err != nil {
+				log.Printf("[api] MCP SQLite delete: %v", err)
+			}
 		}
 		writeJSON(w, http.StatusOK, map[string]string{"deleted": id})
 
