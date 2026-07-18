@@ -12,7 +12,7 @@ func (s *Server) handleListSessions(w http.ResponseWriter, r *http.Request) {
 		writeError(w, http.StatusMethodNotAllowed, "GET required")
 		return
 	}
-	list, err := s.store.List(100)
+	list, err := s.sessStore.List(100)
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, err.Error())
 		return
@@ -45,7 +45,7 @@ func (s *Server) handleSession(w http.ResponseWriter, r *http.Request) {
 }
 
 func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request, id string) {
-	sess, err := s.store.Load(id)
+	sess, err := s.sessStore.Load(id)
 	if err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
@@ -60,7 +60,7 @@ func (s *Server) handleGetSession(w http.ResponseWriter, r *http.Request, id str
 }
 
 func (s *Server) handleDeleteSession(w http.ResponseWriter, r *http.Request, id string) {
-	if err := s.store.Delete(id); err != nil {
+	if err := s.sessStore.Delete(id); err != nil {
 		writeError(w, http.StatusNotFound, err.Error())
 		return
 	}

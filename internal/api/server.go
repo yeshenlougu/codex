@@ -27,13 +27,16 @@ import (
 // Server is the HTTP/WebSocket API server.
 type Server struct {
 	cfg       *config.Config
-	store     *session.Store
+	sessStore *session.Store
 	manager   *agent.Manager    // multi-agent session manager
 	scheduler *schedule.Engine  // cron scheduler
 	mu        sync.RWMutex
 	httpSrv   *http.Server
 	wsHub     *wsHub
 	addr      string
+
+	// SQLite-backed data store (§SPEC Phase 0)
+	store *store.Store
 
 	// MCP runtime management
 	mcpStore    *store.MCPStore
@@ -50,10 +53,11 @@ type Server struct {
 }
 
 // New creates a new API server.
-func New(cfg *config.Config, store *session.Store, addr string) *Server {
+func New(cfg *config.Config, dataStore *store.Store, sessStore *session.Store, addr string) *Server {
 	s := &Server{
 		cfg:         cfg,
-		store:       store,
+		sessStore:   sessStore,
+		store:       dataStore,
 		addr:        addr,
 		wsHub:       newWSHub(),
 		mcpClients:  make(map[string]*mcp.MCPClient),
@@ -73,7 +77,7 @@ func (s *Server) Start() error {
 	if err := agRegistry.LoadAll(); err != nil {
 		log.Printf("[api] agent registry: %v", err)
 	}
-	s.manager = agent.NewManager(s.cfg, s.store, agRegistry)
+	s.manager = agent.NewManager(s.cfg, s.sessStore, agRegistry)
 	// Inject shared MCP tool registry into manager for auto-injection into new agents
 	s.manager.SetMCPRegistry(s.mcpRegistry)
 	log.Printf("[api] agent manager ready — %d profiles loaded", len(agRegistry.List()))

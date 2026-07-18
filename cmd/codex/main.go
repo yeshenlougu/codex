@@ -21,6 +21,7 @@ import (
 	"github.com/yeshenlougu/codex/internal/logger"
 	"github.com/yeshenlougu/codex/internal/session"
 	"github.com/yeshenlougu/codex/internal/skill"
+	"github.com/yeshenlougu/codex/internal/store"
 	"github.com/yeshenlougu/codex/internal/workflow"
 )
 
@@ -33,6 +34,7 @@ var (
 
 var (
 	configPath   = flag.String("config", "", "Path to config file")
+	dbPath       = flag.String("db", "", "Path to SQLite database (default ~/.codex/codex.db)")
 	model        = flag.String("model", "", "Override model name")
 	providerName = flag.String("provider", "", "Override provider")
 	apiKey       = flag.String("api-key", "", "Override API key")
@@ -84,6 +86,36 @@ func main() {
 
 	applyOverrides(cfg)
 
+	// ── Initialize SQLite Store ──
+	dbFile := *dbPath
+	if dbFile == "" {
+		dbFile = filepath.Join(configDir(), "codex.db")
+	}
+	db, err := store.InitDB(dbFile)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error initializing database: %v\n", err)
+		os.Exit(1)
+	}
+	defer db.Close()
+	dataStore := store.NewStore(db)
+	fmt.Fprintf(os.Stderr, "[db] SQLite initialized: %s\n", dbFile)
+
+	// Subcommand: agent copy
+	if flag.NArg() >= 3 && flag.Arg(0) == "agent" && flag.Arg(1) == "copy" {
+		source := flag.Arg(2)
+		target := flag.Arg(3)
+		if target == "" {
+			fmt.Fprintln(os.Stderr, "Usage: codex-go agent copy <source> <target>")
+			os.Exit(1)
+		}
+		if err := dataStore.CopyAgent(source, target); err != nil {
+			fmt.Fprintf(os.Stderr, "Copy failed: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Agent '%s' copied to '%s'\n", source, target)
+		return
+	}
+
 	// Subcommand: provider import/export (cc-switch migration)
 	if flag.NArg() >= 2 && flag.Arg(0) == "provider" {
 		handleProviderCmd(cfg, flag.Arg(1), flag.Args()[2:])
@@ -131,7 +163,7 @@ func main() {
 
 	// --serve (skip API key check — configurable via web UI)
 	if *serve {
-		serveCmd(cfg, store, skillsRegistry)
+		serveCmd(cfg, dataStore, store, skillsRegistry)
 		return
 	}
 
@@ -211,8 +243,8 @@ func loadSkills() *skill.Registry {
 	return r
 }
 
-func serveCmd(cfg *config.Config, store *session.Store, skillsRegistry *skill.Registry) {
-	srv := api.New(cfg, store, *serveAddr)
+func serveCmd(cfg *config.Config, dataStore *store.Store, sessStore *session.Store, skillsRegistry *skill.Registry) {
+	srv := api.New(cfg, dataStore, sessStore, *serveAddr)
 
 	go func() {
 		sigCh := make(chan os.Signal, 1)
