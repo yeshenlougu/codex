@@ -2,17 +2,22 @@ import { useState, useMemo } from 'react';
 import { Layout, Input, Typography, Button } from 'antd';
 import {
   ArrowLeftOutlined, SearchOutlined, SettingOutlined,
-  TeamOutlined, ApiOutlined,
+  TeamOutlined, ApiOutlined, ClockCircleOutlined,
+  AppstoreOutlined, ToolOutlined, BarChartOutlined,
 } from '@ant-design/icons';
 import AgentSettings from './settings/AgentSettings';
 import AgentManager from './settings/AgentManager';
 import ProviderList from './settings/ProviderList';
 import ProviderSettings from './settings/ProviderSettings';
+import ScheduledPage from './ScheduledPage';
+import PluginsPage from './PluginsPage';
+import ToolsPage from './ToolsPage';
+import UsagePage from './UsagePage';
 
 const { Sider, Content } = Layout;
 const { Text } = Typography;
 
-type SubPage = 'general' | 'agents' | 'providerList' | 'providerDetail';
+type SubPage = 'general' | 'agents' | 'providers' | 'scheduled' | 'plugins' | 'tools' | 'usage';
 
 interface Category {
   label: string;
@@ -30,7 +35,16 @@ const categories: Category[] = [
   {
     label: 'Infrastructure',
     items: [
-      { key: 'providerList', label: 'Providers', icon: <ApiOutlined /> },
+      { key: 'providers', label: 'Providers', icon: <ApiOutlined /> },
+      { key: 'tools', label: 'Tools', icon: <ToolOutlined /> },
+      { key: 'plugins', label: 'Plugins', icon: <AppstoreOutlined /> },
+    ],
+  },
+  {
+    label: 'Activity',
+    items: [
+      { key: 'scheduled', label: 'Scheduled', icon: <ClockCircleOutlined /> },
+      { key: 'usage', label: 'Usage', icon: <BarChartOutlined /> },
     ],
   },
 ];
@@ -55,17 +69,12 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
         display: 'flex', flexDirection: 'column', overflow: 'hidden',
       }}>
         <div style={{ padding: '12px 12px 8px', display: 'flex', flexDirection: 'column', gap: 6 }}>
-          {sub === 'providerDetail' ? (
-            <Button type="text" icon={<ArrowLeftOutlined />} onClick={() => setSub('providerList')}
-              style={{ alignSelf: 'flex-start', padding: '0 8px', fontSize: 12 }}>
-              返回供应商列表
-            </Button>
-          ) : onBack ? (
+          {onBack && (
             <Button type="text" icon={<ArrowLeftOutlined />} onClick={onBack}
               style={{ alignSelf: 'flex-start', padding: '0 8px', fontSize: 12 }}>
               返回
             </Button>
-          ) : null}
+          )}
           <Input
             prefix={<SearchOutlined style={{ color: 'var(--text-muted)' }} />}
             placeholder="搜索设置..."
@@ -93,11 +102,9 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
                     display: 'flex', alignItems: 'center', gap: 8,
                     padding: '6px 16px', cursor: 'pointer', fontSize: 12,
                     margin: '0 6px', borderRadius: 6,
-                    background: (sub === item.key || (item.key === 'providerList' && sub === 'providerDetail'))
-                      ? 'var(--bg-active)' : 'transparent',
-                    color: (sub === item.key || (item.key === 'providerList' && sub === 'providerDetail'))
-                      ? 'var(--text-primary)' : 'var(--text-secondary)',
-                    fontWeight: (sub === item.key || (item.key === 'providerList' && sub === 'providerDetail')) ? 500 : 400,
+                    background: sub === item.key ? 'var(--bg-active)' : 'transparent',
+                    color: sub === item.key ? 'var(--text-primary)' : 'var(--text-secondary)',
+                    fontWeight: sub === item.key ? 500 : 400,
                   }}
                 >
                   <span style={{ fontSize: 14, opacity: 0.7 }}>{item.icon}</span>
@@ -112,10 +119,11 @@ export default function SettingsPage({ onBack }: { onBack?: () => void }) {
       <Content style={{ overflow: 'auto', padding: 0, background: 'var(--bg-root)' }}>
         {sub === 'general' && <AgentSettings />}
         {sub === 'agents' && <AgentManager />}
-        {sub === 'providerList' && (
-          <ProviderList onSelect={() => setSub('providerDetail')} />
-        )}
-        {sub === 'providerDetail' && <ProviderSettings />}
+        {sub === 'providers' && <ProviderList onSelect={() => {}} />}
+        {sub === 'scheduled' && <ScheduledPage />}
+        {sub === 'plugins' && <PluginsPage />}
+        {sub === 'tools' && <ToolsPage />}
+        {sub === 'usage' && <UsagePage />}
       </Content>
     </Layout>
   );

@@ -5,13 +5,9 @@ import TitleBar from './components/TitleBar';
 import LeftSidebar from './components/LeftSidebar';
 import ChatPage from './pages/ChatPage';
 import SettingsPage from './pages/SettingsPage';
-import ScheduledPage from './pages/ScheduledPage';
-import PluginsPage from './pages/PluginsPage';
-import UsagePage from './pages/UsagePage';
-import ToolsPage from './pages/ToolsPage';
 import RightPanel from './components/RightPanel';
 
-export type Page = 'chat' | 'settings' | 'scheduled' | 'plugins' | 'usage' | 'tools';
+export type Page = 'chat' | 'settings';
 export type RightTab = 'review' | 'terminal' | 'browser' | 'files' | 'sidetasks';
 
 function AppContent() {
@@ -43,7 +39,7 @@ function AppContent() {
 
   const newSession = useCallback(() => {
     const n = new Date(); const p = (x: number) => String(x).padStart(2, '0');
-    setSessionId(`${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}-${p(n.getHours())}${p(n.getMinutes())}${p(n.getSeconds())}`);
+    setSessionId(`${n.getFullYear()}${p(n.getMonth() + 1)}${p(n.getDate())}-${n.getHours()}${p(n.getMinutes())}${p(n.getSeconds())}`);
     setPage('chat');
   }, []);
 
@@ -58,7 +54,7 @@ function AppContent() {
     setPage('chat');
   }, []);
 
-  // Settings/plugins/scheduled pages: hide main sidebars, use internal nav
+  // Hide sidebars on Settings page
   const isFullPage = page !== 'chat';
 
   return (
@@ -80,7 +76,6 @@ function AppContent() {
         onToggleRight={() => setRightOpen(v => !v)}
       />
       <div className="app-body">
-        {/* Left sidebar: hidden on full pages (settings/plugins/scheduled) */}
         {!isFullPage && leftOpen && (
           <LeftSidebar
             page={page}
@@ -99,12 +94,7 @@ function AppContent() {
             <ChatPage sessionId={sessionId} workspace={workspace} onNavigate={setPage} />
           )}
           {page === 'settings' && <SettingsPage onBack={() => setPage('chat')} />}
-          {page === 'scheduled' && <ScheduledPage />}
-          {page === 'plugins' && <PluginsPage />}
-          {page === 'usage' && <UsagePage />}
-          {page === 'tools' && <ToolsPage />}
         </div>
-        {/* Right panel: hidden on full pages */}
         {!isFullPage && rightOpen && (
           <RightPanel tab={rightTab} onTabChange={setRightTab} onClose={() => setRightOpen(false)} />
         )}

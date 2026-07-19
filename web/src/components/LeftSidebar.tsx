@@ -2,8 +2,7 @@ import { useState, useEffect, useMemo } from 'react';
 import { Layout, Button, Modal, Input, Space, Typography, Tooltip } from 'antd';
 import {
   FolderOpenOutlined, FolderAddOutlined, DeleteOutlined,
-  HomeOutlined, EditOutlined, ClockCircleOutlined, AppstoreOutlined,
-  ToolOutlined, BarChartOutlined, SettingOutlined, DownOutlined, BulbOutlined,
+  HomeOutlined, EditOutlined, SettingOutlined, DownOutlined, BulbOutlined,
 } from '@ant-design/icons';
 import type { SessionSummary } from '../lib/types';
 import { listSessions, deleteSession, listFiles } from '../lib/api';
@@ -161,13 +160,9 @@ export default function LeftSidebar(props: Props) {
     );
   };
 
-  // Nav items matching Codex
+  // Nav items — minimal: chat + gear to settings
   const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key: 'chat', label: '新建任务', icon: <EditOutlined /> },
-    { key: 'scheduled', label: '已安排', icon: <ClockCircleOutlined /> },
-    { key: 'plugins', label: '插件', icon: <AppstoreOutlined /> },
-    { key: 'tools', label: '工具', icon: <ToolOutlined /> },
-    { key: 'usage', label: '用量', icon: <BarChartOutlined /> },
   ];
 
   return (
