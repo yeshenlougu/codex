@@ -2,6 +2,7 @@ package api
 
 import (
 	"encoding/json"
+	"fmt"
 	"log"
 	"net/http"
 	"path/filepath"
@@ -48,6 +49,24 @@ func toSkillItem(sk *store.InstalledSkill) *skillItem {
 func (s *Server) handleSkillsExtended(w http.ResponseWriter, r *http.Request) {
 	path := strings.TrimPrefix(r.URL.Path, "/api/skills")
 	path = strings.TrimPrefix(path, "/")
+
+	// /api/skills/index — triggers re-scan of skill directories into SQLite index.
+	if path == "index" && r.Method == http.MethodPost {
+		s.indexSkills(w, r)
+		return
+	}
+
+	// /api/skills/search?q=... — full-text search across indexed skills.
+	if path == "search" && r.Method == http.MethodGet {
+		s.searchSkills(w, r)
+		return
+	}
+
+	// /api/skills/indexed — list all indexed skills from SQLite.
+	if path == "indexed" && r.Method == http.MethodGet {
+		s.listIndexedSkills(w, r)
+		return
+	}
 
 	// /api/skills/installed
 	if path == "installed" && r.Method == http.MethodGet {
@@ -252,4 +271,90 @@ func (s *Server) reloadSkills() {
 	// Update manager's skill registry (existing agents need restart to pick up,
 	// but new agents get the updated skills via the manager)
 	log.Printf("[api] skill registry reloaded — %d skills", len(reg.All()))
+}
+
+// indexSkills triggers a scan of all skill directories and upserts into the SQLite skills index.
+func (s *Server) indexSkills(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		writeError(w, http.StatusInternalServerError, "store not available")
+		return
+	}
+
+	dirs := []string{
+		filepath.Join(expandHome("~/.codex"), "skills"),
+		filepath.Join(expandHome("~/.claude"), "skills"),
+		filepath.Join(expandHome("~/.agents"), "skills"),
+	}
+
+	count := 0
+	for _, dir := range dirs {
+		reg := skill.NewRegistry()
+		reg.AddDir(dir)
+		if err := reg.LoadAll(); err != nil {
+			log.Printf("[api] skill index scan %s: %v", dir, err)
+			continue
+		}
+		for _, sk := range reg.All() {
+			tagsJSON := "[]"
+			if len(sk.Tags) > 0 {
+				b, _ := json.Marshal(sk.Tags)
+				tagsJSON = string(b)
+			}
+			if err := s.store.UpsertSkill(sk.Name, sk.Description, tagsJSON, sk.Path, dir); err != nil {
+				log.Printf("[api] skill index upsert %s: %v", sk.Name, err)
+				continue
+			}
+			count++
+		}
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"indexed": count,
+		"message": fmt.Sprintf("indexed %d skills from %d directories", count, len(dirs)),
+	})
+}
+
+// searchSkills searches indexed skills by query string.
+func (s *Server) searchSkills(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		writeError(w, http.StatusInternalServerError, "store not available")
+		return
+	}
+
+	q := r.URL.Query().Get("q")
+	if q == "" {
+		writeError(w, http.StatusBadRequest, "query parameter 'q' required")
+		return
+	}
+
+	results, err := s.store.SearchSkills(q, 50)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "search failed: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"query":  q,
+		"skills": results,
+		"count":  len(results),
+	})
+}
+
+// listIndexedSkills returns all skills from the SQLite index.
+func (s *Server) listIndexedSkills(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		writeError(w, http.StatusInternalServerError, "store not available")
+		return
+	}
+
+	results, err := s.store.ListIndexedSkills()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list failed: "+err.Error())
+		return
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"skills": results,
+		"count":  len(results),
+	})
 }

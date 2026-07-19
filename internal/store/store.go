@@ -4,6 +4,8 @@ import (
 	"database/sql"
 	"encoding/json"
 	"fmt"
+	"os"
+	"path/filepath"
 	"time"
 
 	"github.com/google/uuid"
@@ -894,6 +896,117 @@ func (s *Store) UsageLogs(limit int) ([]UsageLogInput, error) {
 		out = append(out, u)
 	}
 	return out, rows.Err()
+}
+
+// ── Skills Index ──────────────────────────────────────────────────────────
+
+// SkillIndexRow mirrors the skills table (SQLite index of parsed SKILL.md files).
+type SkillIndexRow struct {
+	ID          int    `json:"id"`
+	Name        string `json:"name"`
+	Description string `json:"description"`
+	Tags        string `json:"tags"`
+	FilePath    string `json:"file_path"`
+	Source      string `json:"source"`
+	Enabled     int    `json:"enabled"`
+	CreatedAt   int64  `json:"created_at"`
+}
+
+// UpsertSkill inserts or updates a skill in the SQLite skills index.
+func (s *Store) UpsertSkill(name, description, tags, filePath, source string) error {
+	now := time.Now().Unix()
+	_, err := s.db.Exec(`
+		INSERT INTO skills (name, description, tags, file_path, source, enabled, created_at)
+		VALUES (?, ?, ?, ?, ?, 1, ?)
+		ON CONFLICT(name) DO UPDATE SET
+			description = excluded.description,
+			tags = excluded.tags,
+			file_path = excluded.file_path,
+			source = excluded.source
+	`, name, description, tags, filePath, source, now)
+	return err
+}
+
+// SearchSkills performs a LIKE search across skill name, description, and tags.
+func (s *Store) SearchSkills(query string, limit int) ([]SkillIndexRow, error) {
+	if limit <= 0 {
+		limit = 50
+	}
+	like := "%" + query + "%"
+	rows, err := s.db.Query(`
+		SELECT id, name, description, tags, file_path, source, enabled, created_at
+		FROM skills
+		WHERE enabled = 1 AND (name LIKE ? OR description LIKE ? OR tags LIKE ?)
+		ORDER BY name
+		LIMIT ?
+	`, like, like, like, limit)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SkillIndexRow
+	for rows.Next() {
+		var r SkillIndexRow
+		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.Tags, &r.FilePath, &r.Source, &r.Enabled, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ListIndexedSkills returns all indexed skills.
+func (s *Store) ListIndexedSkills() ([]SkillIndexRow, error) {
+	rows, err := s.db.Query(`SELECT id, name, description, tags, file_path, source, enabled, created_at FROM skills WHERE enabled = 1 ORDER BY name`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+
+	var out []SkillIndexRow
+	for rows.Next() {
+		var r SkillIndexRow
+		if err := rows.Scan(&r.ID, &r.Name, &r.Description, &r.Tags, &r.FilePath, &r.Source, &r.Enabled, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// IndexSkillsFromDirs scans directories for SKILL.md files and upserts them into SQLite.
+// dirs is a list of absolute paths to scan (e.g. ~/.codex/skills, ~/.claude/skills).
+func (s *Store) IndexSkillsFromDirs(dirs []string, registrySkillParser func(path string) (name, desc, tags string, err error)) (int, error) {
+	count := 0
+	for _, dir := range dirs {
+		entries, err := os.ReadDir(dir)
+		if err != nil {
+			continue // skip inaccessible dirs
+		}
+		for _, entry := range entries {
+			if !entry.IsDir() {
+				continue
+			}
+			skillDir := filepath.Join(dir, entry.Name())
+			skillFile := filepath.Join(skillDir, "SKILL.md")
+			if _, err := os.Stat(skillFile); os.IsNotExist(err) {
+				skillFile = filepath.Join(skillDir, "skill.md")
+				if _, err := os.Stat(skillFile); os.IsNotExist(err) {
+					continue
+				}
+			}
+			name, desc, tags, err := registrySkillParser(skillFile)
+			if err != nil || name == "" {
+				continue
+			}
+			if err := s.UpsertSkill(name, desc, tags, skillFile, dir); err != nil {
+				continue
+			}
+			count++
+		}
+	}
+	return count, nil
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────

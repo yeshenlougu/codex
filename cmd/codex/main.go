@@ -47,6 +47,8 @@ var (
 	showVersion  = flag.Bool("version", false, "Show version info")
 	serve        = flag.Bool("serve", false, "Start HTTP/WebSocket API server")
 	serveAddr    = flag.String("addr", ":1977", "API server listen address")
+	proxy        = flag.Bool("proxy", false, "Start headless OpenAI-compatible proxy server")
+	proxyAddr    = flag.String("proxy-addr", ":1978", "Proxy server listen address")
 	skillsDir    = flag.String("skills-dir", "", "Additional skills directory")
 )
 
@@ -164,6 +166,12 @@ func main() {
 	// --serve (skip API key check — configurable via web UI)
 	if *serve {
 		serveCmd(cfg, dataStore, store, skillsRegistry)
+		return
+	}
+
+	// --proxy (headless proxy server — loads providers from SQLite)
+	if *proxy {
+		api.RunProxy(dataStore, *proxyAddr)
 		return
 	}
 

@@ -109,6 +109,32 @@ func (s *Server) Start() error {
 		s.skillStore = skillStore
 		s.skillInstaller = skill.NewInstaller(skillStore, skillsDir)
 		log.Printf("[api] skill store ready — %d installed, %d repos", len(skillStore.Skills()), len(skillStore.Repos()))
+		// Auto-index skills into SQLite on startup
+		go func() {
+			dirs := []string{
+				filepath.Join(expandHome("~/.codex"), "skills"),
+				filepath.Join(expandHome("~/.claude"), "skills"),
+				filepath.Join(expandHome("~/.agents"), "skills"),
+			}
+			for _, dir := range dirs {
+				reg := skill.NewRegistry()
+				reg.AddDir(dir)
+				if err := reg.LoadAll(); err != nil {
+					continue
+				}
+				for _, sk := range reg.All() {
+					tagsJSON := "[]"
+					if len(sk.Tags) > 0 {
+						b, _ := json.Marshal(sk.Tags)
+						tagsJSON = string(b)
+					}
+					s.store.UpsertSkill(sk.Name, sk.Description, tagsJSON, sk.Path, dir)
+				}
+			}
+			if indexed, _ := s.store.ListIndexedSkills(); len(indexed) > 0 {
+				log.Printf("[api] skills indexed — %d in SQLite", len(indexed))
+			}
+		}()
 	} else {
 		log.Printf("[api] skill store init: %v", skErr)
 	}

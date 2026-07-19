@@ -4,6 +4,7 @@ import {
   FolderOpenOutlined, FolderAddOutlined, DeleteOutlined,
   HomeOutlined, EditOutlined, ClockCircleOutlined, AppstoreOutlined,
   ToolOutlined, BarChartOutlined, SettingOutlined, DownOutlined, BulbOutlined,
+  TeamOutlined, ApiOutlined,
 } from '@ant-design/icons';
 import type { SessionSummary } from '../lib/types';
 import { listSessions, deleteSession, listFiles } from '../lib/api';
@@ -164,6 +165,8 @@ export default function LeftSidebar(props: Props) {
   // Nav items matching Codex
   const navItems: { key: Page; label: string; icon: React.ReactNode }[] = [
     { key: 'chat', label: '新建任务', icon: <EditOutlined /> },
+    { key: 'agents', label: 'Agents', icon: <TeamOutlined /> },
+    { key: 'providers', label: 'Providers', icon: <ApiOutlined /> },
     { key: 'scheduled', label: '已安排', icon: <ClockCircleOutlined /> },
     { key: 'plugins', label: '插件', icon: <AppstoreOutlined /> },
     { key: 'tools', label: '工具', icon: <ToolOutlined /> },
