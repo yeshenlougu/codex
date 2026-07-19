@@ -190,7 +190,10 @@ func (p *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Reque
 	// Apply model aliases: resolve the model name in the request body
 	resolvedBody := p.resolveModelInRequest(body)
 
-	proxyReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(resolvedBody))
+	// Sanitize media: strip image content if backend lacks vision capability
+	sanitizedBody, _ := provider.SanitizeRequestForBackend(entry, resolvedBody)
+
+	proxyReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(sanitizedBody))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "proxy request: "+err.Error())
 		return

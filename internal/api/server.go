@@ -237,6 +237,10 @@ func (s *Server) Start() error {
 
 	// Multi-Provider management (§SPEC-CCSWITCH Phase 1 — now SQLite-backed)
 	mux.HandleFunc("/api/providers", cors(s.handleProviders))
+
+	// Model Aliases (runtime mapping — must be before /api/providers/ prefix)
+	mux.HandleFunc("/api/providers/aliases", cors(s.handleModelAliases))
+	mux.HandleFunc("/api/providers/aliases/", cors(s.handleModelAliases))
 	mux.HandleFunc("/api/providers/", cors(func(w http.ResponseWriter, r *http.Request) {
 		// Route /api/providers/:id/backends/:label to handleProviderBackends
 		path := strings.TrimPrefix(r.URL.Path, "/api/providers/")
@@ -365,4 +369,72 @@ func (s *Server) handleSessionRoute(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	s.handleSession(w, r)
+}
+
+// handleModelAliases manages model aliases for the current provider.
+func (s *Server) handleModelAliases(w http.ResponseWriter, r *http.Request) {
+	if s.store == nil {
+		writeError(w, http.StatusInternalServerError, "store not available")
+		return
+	}
+
+	// Find current provider
+	providers, _ := s.store.ListProviders()
+	var providerID string
+	for _, prov := range providers {
+		if prov.IsCurrent {
+			providerID = prov.ID
+			break
+		}
+	}
+	if providerID == "" && len(providers) > 0 {
+		providerID = providers[0].ID
+	}
+
+	path := strings.TrimPrefix(r.URL.Path, "/api/providers/aliases")
+	path = strings.TrimPrefix(path, "/")
+
+	switch {
+	case r.Method == http.MethodGet && path == "":
+		aliases, err := s.store.ListModelAliases(providerID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"aliases": aliases, "provider_id": providerID})
+
+	case r.Method == http.MethodPost && path == "":
+		var input struct {
+			Alias    string `json:"alias"`
+			RealName string `json:"real_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		if input.Alias == "" || input.RealName == "" {
+			writeError(w, http.StatusBadRequest, "alias and real_name required")
+			return
+		}
+		if err := s.store.UpsertModelAlias(providerID, input.Alias, input.RealName); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"alias": input.Alias, "real_name": input.RealName})
+
+	case r.Method == http.MethodDelete && path != "":
+		var id int
+		if _, err := fmt.Sscanf(path, "%d", &id); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid alias ID")
+			return
+		}
+		if err := s.store.DeleteModelAlias(id); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"deleted": path})
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "use GET/POST/DELETE")
+	}
 }
