@@ -1433,3 +1433,111 @@ body {
   justify-content: flex-end;
   margin-top: 4px;
 }
+
+/* ==================== UI Polish — Transitions & Micro-interactions ==================== */
+
+/* Smooth card hover elevation */
+.ant-card {
+  transition: transform 0.15s ease, box-shadow 0.15s ease, border-color 0.15s ease;
+}
+.ant-card:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 4px 12px rgba(0,0,0,0.08);
+}
+[data-theme="dark"] .ant-card:hover {
+  box-shadow: 0 4px 12px rgba(0,0,0,0.3);
+}
+
+/* Button ripple feel */
+.ant-btn {
+  transition: all 0.12s ease;
+}
+.ant-btn-primary {
+  box-shadow: 0 1px 3px rgba(94,106,210,0.3);
+}
+.ant-btn-primary:hover {
+  box-shadow: 0 2px 8px rgba(94,106,210,0.4);
+}
+
+/* Input focus glow */
+.ant-input:focus,
+.ant-input-affix-wrapper:focus,
+.ant-input-affix-wrapper-focused {
+  box-shadow: 0 0 0 2px rgba(94,106,210,0.15) !important;
+}
+
+/* Select dropdown item hover */
+.ant-select-item-option-active {
+  background: var(--accent-dim) !important;
+}
+
+/* Table row hover */
+.ant-table-tbody > tr.ant-table-row:hover > td {
+  background: var(--bg-hover) !important;
+}
+
+/* Tag refinement */
+.ant-tag {
+  border-radius: 4px;
+  font-size: 11px;
+  line-height: 18px;
+  padding: 0 6px;
+}
+
+/* Badge pulse for healthy status */
+@keyframes healthyPulse {
+  0%, 100% { box-shadow: 0 0 0 0 rgba(39, 166, 68, 0.4); }
+  50% { box-shadow: 0 0 0 4px rgba(39, 166, 68, 0); }
+}
+.health-dot-healthy {
+  animation: healthyPulse 2s ease-in-out infinite;
+}
+
+/* Switch toggle smooth */
+.ant-switch {
+  transition: all 0.2s ease;
+}
+
+/* Modal backdrop fade */
+.ant-modal-mask {
+  backdrop-filter: blur(2px);
+}
+
+/* Skeleton loading shimmer */
+@keyframes shimmer {
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+.ant-skeleton-content .ant-skeleton-paragraph > li {
+  background: linear-gradient(90deg, var(--bg-elevated) 25%, var(--bg-hover) 50%, var(--bg-elevated) 75%);
+  background-size: 200% 100%;
+  animation: shimmer 1.5s ease-in-out infinite;
+}
+
+/* Tooltip refinement */
+.ant-tooltip-inner {
+  font-size: 11px;
+  border-radius: 4px;
+  padding: 4px 8px;
+}
+
+/* Menu item active indicator */
+.ant-menu-item-selected::after {
+  border-right-color: var(--accent) !important;
+}
+
+/* Statistic number animation */
+.ant-statistic-content-value {
+  transition: color 0.3s ease;
+}
+
+/* Page transition (subtle fade) */
+.full-page-enter {
+  opacity: 0;
+  transform: translateY(4px);
+}
+.full-page-enter-active {
+  opacity: 1;
+  transform: translateY(0);
+  transition: opacity 0.2s ease, transform 0.2s ease;
+}
