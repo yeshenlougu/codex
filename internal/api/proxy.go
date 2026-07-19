@@ -5,12 +5,14 @@ package api
 import (
 	"bytes"
 	"context"
+	"encoding/json"
 	"fmt"
 	"io"
 	"log"
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -74,6 +76,8 @@ func (p *ProxyServer) Start() error {
 	mux.HandleFunc("/v1/models", cors(p.handleModels))
 	mux.HandleFunc("/v1/chat/completions", cors(p.handleChatCompletions))
 	mux.HandleFunc("/v1/config/reload", cors(p.handleConfigReload))
+	mux.HandleFunc("/v1/aliases", cors(p.handleAliases))
+	mux.HandleFunc("/v1/aliases/", cors(p.handleAliases))
 
 	p.httpSrv = &http.Server{
 		Addr:         p.addr,
@@ -182,7 +186,11 @@ func (p *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Reque
 
 	// Proxy the request
 	targetURL := entry.BaseURL + "/chat/completions"
-	proxyReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(body))
+
+	// Apply model aliases: resolve the model name in the request body
+	resolvedBody := p.resolveModelInRequest(body)
+
+	proxyReq, err := http.NewRequestWithContext(r.Context(), "POST", targetURL, bytes.NewReader(resolvedBody))
 	if err != nil {
 		writeError(w, http.StatusInternalServerError, "proxy request: "+err.Error())
 		return
@@ -211,6 +219,9 @@ func (p *ProxyServer) handleChatCompletions(w http.ResponseWriter, r *http.Reque
 	} else {
 		entry.MarkSuccess()
 	}
+
+	// Log usage (async, best-effort)
+	go p.logUsage(entry.Label, body, resp.StatusCode)
 
 	// Copy response headers
 	for k, vs := range resp.Header {
@@ -247,6 +258,175 @@ func (p *ProxyServer) handleConfigReload(w http.ResponseWriter, r *http.Request)
 		"status":   "reloaded",
 		"backends": backendCount,
 	})
+}
+
+// ── CLI entry point ──
+
+// logUsage records a proxy request to usage_logs.
+func (p *ProxyServer) logUsage(label string, requestBody []byte, statusCode int) {
+	if p.store == nil {
+		return
+	}
+
+	// Find current provider
+	providers, _ := p.store.ListProviders()
+	var providerID string
+	for _, prov := range providers {
+		if prov.IsCurrent {
+			providerID = prov.ID
+			break
+		}
+	}
+
+	// Extract model name from request body
+	modelName := "unknown"
+	var req map[string]any
+	if err := json.Unmarshal(requestBody, &req); err == nil {
+		if m, ok := req["model"].(string); ok {
+			modelName = m
+		}
+	}
+
+	// Count approximate tokens from messages
+	var inputTokens int
+	if msgs, ok := req["messages"].([]any); ok {
+		for _, m := range msgs {
+			if msg, ok := m.(map[string]any); ok {
+				if content, ok := msg["content"].(string); ok {
+					inputTokens += len(content) / 4
+				}
+			}
+		}
+	}
+
+	_ = label
+	_ = statusCode
+
+	p.store.LogUsage(store.UsageLogInput{
+		ProviderID:  providerID,
+		Model:       modelName,
+		InputTokens: inputTokens,
+	})
+}
+
+// resolveModelInRequest parses a JSON chat completion request body,
+// resolves model aliases, and returns the modified body.
+func (p *ProxyServer) resolveModelInRequest(body []byte) []byte {
+	if p.store == nil {
+		return body
+	}
+
+	var req map[string]any
+	if err := json.Unmarshal(body, &req); err != nil {
+		return body // not valid JSON — forward as-is
+	}
+
+	modelName, ok := req["model"].(string)
+	if !ok || modelName == "" {
+		return body
+	}
+
+	// Find current provider ID
+	providers, err := p.store.ListProviders()
+	if err != nil {
+		return body
+	}
+	var providerID string
+	for _, prov := range providers {
+		if prov.IsCurrent {
+			providerID = prov.ID
+			break
+		}
+	}
+	if providerID == "" && len(providers) > 0 {
+		providerID = providers[0].ID
+	}
+	if providerID == "" {
+		return body
+	}
+
+	resolved := p.store.ResolveModel(providerID, modelName)
+	if resolved != modelName {
+		req["model"] = resolved
+		modified, err := json.Marshal(req)
+		if err != nil {
+			return body
+		}
+		log.Printf("[proxy] model alias: %s → %s", modelName, resolved)
+		return modified
+	}
+	return body
+}
+
+// handleAliases manages model aliases for the current provider.
+func (p *ProxyServer) handleAliases(w http.ResponseWriter, r *http.Request) {
+	if p.store == nil {
+		writeError(w, http.StatusInternalServerError, "store not available")
+		return
+	}
+
+	// Find current provider
+	providers, _ := p.store.ListProviders()
+	var providerID string
+	for _, prov := range providers {
+		if prov.IsCurrent {
+			providerID = prov.ID
+			break
+		}
+	}
+	if providerID == "" && len(providers) > 0 {
+		providerID = providers[0].ID
+	}
+
+	switch r.Method {
+	case http.MethodGet:
+		aliases, err := p.store.ListModelAliases(providerID)
+		if err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]any{"aliases": aliases, "provider_id": providerID})
+
+	case http.MethodPost:
+		var input struct {
+			Alias    string `json:"alias"`
+			RealName string `json:"real_name"`
+		}
+		if err := json.NewDecoder(r.Body).Decode(&input); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid JSON")
+			return
+		}
+		if input.Alias == "" || input.RealName == "" {
+			writeError(w, http.StatusBadRequest, "alias and real_name required")
+			return
+		}
+		if err := p.store.UpsertModelAlias(providerID, input.Alias, input.RealName); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusCreated, map[string]string{"alias": input.Alias, "real_name": input.RealName})
+
+	case http.MethodDelete:
+		// Delete by alias ID: /v1/aliases/123
+		path := r.URL.Path
+		idStr := ""
+		if idx := strings.LastIndex(path, "/"); idx >= 0 {
+			idStr = path[idx+1:]
+		}
+		var id int
+		if _, err := fmt.Sscanf(idStr, "%d", &id); err != nil {
+			writeError(w, http.StatusBadRequest, "invalid alias ID")
+			return
+		}
+		if err := p.store.DeleteModelAlias(id); err != nil {
+			writeError(w, http.StatusInternalServerError, err.Error())
+			return
+		}
+		writeJSON(w, http.StatusOK, map[string]string{"deleted": idStr})
+
+	default:
+		writeError(w, http.StatusMethodNotAllowed, "use GET/POST/DELETE")
+	}
 }
 
 // ── CLI entry point ──

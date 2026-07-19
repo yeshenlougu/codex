@@ -18,6 +18,9 @@ var migration001 string
 //go:embed migrations/002_skills_fts.sql
 var migration002 string
 
+//go:embed migrations/003_model_aliases.sql
+var migration003 string
+
 // InitDB opens (or creates) the SQLite database at the given path,
 // runs all pending migrations, and seeds default data.
 // Returns the database connection and optional key encryption (if codexDir is provided).
@@ -85,6 +88,7 @@ func runMigrations(db *sql.DB) error {
 	}{
 		{1, migration001},
 		{2, migration002},
+		{3, migration003},
 	}
 
 	for _, m := range migrations {

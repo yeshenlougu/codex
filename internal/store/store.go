@@ -1055,6 +1055,81 @@ func (s *Store) IndexSkillsFromDirs(dirs []string, registrySkillParser func(path
 
 // ── Helpers ───────────────────────────────────────────────────────────────
 
+// ── Model Aliases ─────────────────────────────────────────────────────────
+
+// ModelAliasRow mirrors the model_aliases table.
+type ModelAliasRow struct {
+	ID         int    `json:"id"`
+	ProviderID string `json:"provider_id"`
+	Alias      string `json:"alias"`
+	RealName   string `json:"real_name"`
+	CreatedAt  int64  `json:"created_at"`
+}
+
+// ListModelAliases returns all aliases for a provider.
+func (s *Store) ListModelAliases(providerID string) ([]ModelAliasRow, error) {
+	rows, err := s.db.Query(`SELECT id, provider_id, alias, real_name, created_at FROM model_aliases WHERE provider_id = ? ORDER BY alias`, providerID)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ModelAliasRow
+	for rows.Next() {
+		var r ModelAliasRow
+		if err := rows.Scan(&r.ID, &r.ProviderID, &r.Alias, &r.RealName, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// ListAllModelAliases returns all aliases across all providers.
+func (s *Store) ListAllModelAliases() ([]ModelAliasRow, error) {
+	rows, err := s.db.Query(`SELECT id, provider_id, alias, real_name, created_at FROM model_aliases ORDER BY provider_id, alias`)
+	if err != nil {
+		return nil, err
+	}
+	defer rows.Close()
+	var out []ModelAliasRow
+	for rows.Next() {
+		var r ModelAliasRow
+		if err := rows.Scan(&r.ID, &r.ProviderID, &r.Alias, &r.RealName, &r.CreatedAt); err != nil {
+			return nil, err
+		}
+		out = append(out, r)
+	}
+	return out, rows.Err()
+}
+
+// UpsertModelAlias inserts or updates a model alias.
+func (s *Store) UpsertModelAlias(providerID, alias, realName string) error {
+	now := time.Now().Unix()
+	_, err := s.db.Exec(`
+		INSERT INTO model_aliases (provider_id, alias, real_name, created_at)
+		VALUES (?, ?, ?, ?)
+		ON CONFLICT(provider_id, alias) DO UPDATE SET real_name = excluded.real_name
+	`, providerID, alias, realName, now)
+	return err
+}
+
+// DeleteModelAlias removes an alias by ID.
+func (s *Store) DeleteModelAlias(id int) error {
+	_, err := s.db.Exec(`DELETE FROM model_aliases WHERE id = ?`, id)
+	return err
+}
+
+// ResolveModel maps an alias to its real name for a given provider.
+// Returns the original name if no alias is found.
+func (s *Store) ResolveModel(providerID, modelName string) string {
+	var realName string
+	err := s.db.QueryRow(`SELECT real_name FROM model_aliases WHERE provider_id = ? AND alias = ?`, providerID, modelName).Scan(&realName)
+	if err != nil {
+		return modelName // no alias — return as-is
+	}
+	return realName
+}
+
 // EncryptLegacyKeys scans all backends and encrypts any plaintext api_key values.
 // Called once after store initialization with crypto enabled.
 func (s *Store) EncryptLegacyKeys() (int, error) {
