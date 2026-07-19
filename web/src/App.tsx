@@ -9,11 +9,9 @@ import ScheduledPage from './pages/ScheduledPage';
 import PluginsPage from './pages/PluginsPage';
 import UsagePage from './pages/UsagePage';
 import ToolsPage from './pages/ToolsPage';
-import AgentsPage from './pages/AgentsPage';
-import ProvidersPage from './pages/ProvidersPage';
 import RightPanel from './components/RightPanel';
 
-export type Page = 'chat' | 'settings' | 'scheduled' | 'plugins' | 'usage' | 'tools' | 'agents' | 'providers';
+export type Page = 'chat' | 'settings' | 'scheduled' | 'plugins' | 'usage' | 'tools';
 export type RightTab = 'review' | 'terminal' | 'browser' | 'files' | 'sidetasks';
 
 function AppContent() {
@@ -105,8 +103,6 @@ function AppContent() {
           {page === 'plugins' && <PluginsPage />}
           {page === 'usage' && <UsagePage />}
           {page === 'tools' && <ToolsPage />}
-          {page === 'agents' && <AgentsPage onBack={() => setPage('chat')} />}
-          {page === 'providers' && <ProvidersPage onBack={() => setPage('chat')} />}
         </div>
         {/* Right panel: hidden on full pages */}
         {!isFullPage && rightOpen && (

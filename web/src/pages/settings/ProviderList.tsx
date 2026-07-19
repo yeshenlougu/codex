@@ -133,7 +133,7 @@ export default function ProviderList({ onSelect }: { onSelect?: (id: string) => 
             const iconEmoji = PROVIDER_ICONS[p.icon || ''] || '🔌';
 
             return (
-              <Col span={12} key={p.id}>
+              <Col span={providers.length === 1 ? 24 : 12} key={p.id}>
                 <Card
                   size="small"
                   hoverable
@@ -151,7 +151,7 @@ export default function ProviderList({ onSelect }: { onSelect?: (id: string) => 
                     </Space>
                   }
                   extra={
-                    <Space>
+                    <Space size={12}>
                       <HealthStatusIndicator
                         status={p.healthy_count === p.backend_count && p.backend_count > 0 ? 'healthy' :
                                 p.healthy_count > 0 ? 'degraded' :
@@ -159,7 +159,9 @@ export default function ProviderList({ onSelect }: { onSelect?: (id: string) => 
                         showLabel
                         size="small"
                       />
-                      <Badge status={p.backend_count > 0 ? 'success' : 'default'} text={`${p.healthy_count || 0}/${p.backend_count} 端点`} />
+                      <Text type="secondary" style={{ fontSize: 11 }}>
+                        {p.healthy_count || 0}/{p.backend_count} 端点
+                      </Text>
                     </Space>
                   }
                   actions={[
@@ -171,9 +173,11 @@ export default function ProviderList({ onSelect }: { onSelect?: (id: string) => 
                         </Button>
                       </Tooltip>
                     ),
-                    <Tooltip title="健康探测" key="probe">
+                    <Tooltip title="探测端点健康状态" key="probe">
                       <Button type="text" size="small" icon={<ThunderboltOutlined />}
-                        onClick={e => { e.stopPropagation(); handleProbe(p.id); }} />
+                        onClick={e => { e.stopPropagation(); handleProbe(p.id); }}>
+                        探测
+                      </Button>
                     </Tooltip>,
                     !isCurrent && (
                       <Popconfirm title={`删除 "${p.name}"？`} onConfirm={() => handleDelete(p.id)} key="del">
@@ -183,7 +187,7 @@ export default function ProviderList({ onSelect }: { onSelect?: (id: string) => 
                     ),
                   ].filter(Boolean)}
                 >
-                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+                  <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap', minHeight: 28 }}>
                     {p.in_failover_queue && (
                       <Tag icon={<SafetyCertificateOutlined />} color="blue" style={{ fontSize: 10 }}>
                         故障转移队列
@@ -193,6 +197,9 @@ export default function ProviderList({ onSelect }: { onSelect?: (id: string) => 
                       <Tag icon={<CheckCircleOutlined />} color="#5e6ad2" style={{ fontSize: 10 }}>
                         活跃
                       </Tag>
+                    )}
+                    {p.notes && (
+                      <Text type="secondary" style={{ fontSize: 11 }}>{p.notes}</Text>
                     )}
                   </div>
                 </Card>
