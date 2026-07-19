@@ -93,14 +93,21 @@ func main() {
 	if dbFile == "" {
 		dbFile = filepath.Join(configDir(), "codex.db")
 	}
-	db, err := store.InitDB(dbFile)
+	db, crypto, err := store.InitDB(dbFile, configDir())
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error initializing database: %v\n", err)
 		os.Exit(1)
 	}
 	defer db.Close()
-	dataStore := store.NewStore(db)
+	dataStore := store.NewStoreWithCrypto(db, crypto)
 	fmt.Fprintf(os.Stderr, "[db] SQLite initialized: %s\n", dbFile)
+
+	// Encrypt any legacy plaintext API keys
+	if n, err := dataStore.EncryptLegacyKeys(); err != nil {
+		fmt.Fprintf(os.Stderr, "[db] encrypt legacy keys: %v\n", err)
+	} else if n > 0 {
+		fmt.Fprintf(os.Stderr, "[db] encrypted %d legacy API keys\n", n)
+	}
 
 	// Subcommand: agent copy
 	if flag.NArg() >= 3 && flag.Arg(0) == "agent" && flag.Arg(1) == "copy" {

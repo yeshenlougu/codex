@@ -13,12 +13,42 @@ import (
 
 // Store is the SQLite-backed data layer for all Codex Go entities.
 type Store struct {
-	db *sql.DB
+	db   *sql.DB
+	crypto *KeyEncryption
 }
 
 // NewStore wraps an existing *sql.DB connection.
 func NewStore(db *sql.DB) *Store {
 	return &Store{db: db}
+}
+
+// NewStoreWithCrypto wraps an existing *sql.DB with API key encryption.
+func NewStoreWithCrypto(db *sql.DB, crypto *KeyEncryption) *Store {
+	return &Store{db: db, crypto: crypto}
+}
+
+// encryptKey encrypts an API key if crypto is configured.
+func (s *Store) encryptKey(key string) string {
+	if s.crypto == nil || key == "" {
+		return key
+	}
+	enc, err := s.crypto.Encrypt(key)
+	if err != nil {
+		return key // fallback: store plaintext if encryption fails
+	}
+	return enc
+}
+
+// decryptKey decrypts an API key if crypto is configured.
+func (s *Store) decryptKey(key string) string {
+	if s.crypto == nil || key == "" {
+		return key
+	}
+	dec, err := s.crypto.Decrypt(key)
+	if err != nil {
+		return key // fallback: return as-is
+	}
+	return dec
 }
 
 // ── Provider ──────────────────────────────────────────────────────────────
@@ -143,7 +173,7 @@ func (s *Store) CreateProvider(name, icon, iconColor, category, apiFormat string
 		res, err := tx.Exec(`
 			INSERT INTO backends (provider_id, label, api_key, base_url, weight, headers, created_at)
 			VALUES (?, ?, ?, ?, ?, '{}', ?)
-		`, id, be.Label, be.APIKey, be.BaseURL, be.Weight, now)
+		`, id, be.Label, s.encryptKey(be.APIKey), be.BaseURL, be.Weight, now)
 		if err != nil {
 			return nil, fmt.Errorf("insert backend: %w", err)
 		}
@@ -286,6 +316,7 @@ func (s *Store) ListBackends(providerID string) ([]BackendRow, error) {
 			&r.Models); err != nil {
 			return nil, err
 		}
+		r.APIKey = s.decryptKey(r.APIKey)
 		out = append(out, r)
 	}
 	return out, rows.Err()
@@ -297,7 +328,7 @@ func (s *Store) CreateBackend(providerID, label, apiKey, baseURL string, weight 
 	res, err := s.db.Exec(`
 		INSERT INTO backends (provider_id, label, api_key, base_url, weight, headers, created_at)
 		VALUES (?, ?, ?, ?, ?, '{}', ?)
-	`, providerID, label, apiKey, baseURL, weight, now)
+	`, providerID, label, s.encryptKey(apiKey), baseURL, weight, now)
 	if err != nil {
 		return nil, err
 	}
@@ -927,21 +958,34 @@ func (s *Store) UpsertSkill(name, description, tags, filePath, source string) er
 	return err
 }
 
-// SearchSkills performs a LIKE search across skill name, description, and tags.
+// SearchSkills performs FTS5 full-text search across skill name, description, and tags.
 func (s *Store) SearchSkills(query string, limit int) ([]SkillIndexRow, error) {
 	if limit <= 0 {
 		limit = 50
 	}
-	like := "%" + query + "%"
+
+	// Try FTS5 first; fall back to LIKE if FTS table doesn't exist
 	rows, err := s.db.Query(`
-		SELECT id, name, description, tags, file_path, source, enabled, created_at
-		FROM skills
-		WHERE enabled = 1 AND (name LIKE ? OR description LIKE ? OR tags LIKE ?)
-		ORDER BY name
+		SELECT s.id, s.name, s.description, s.tags, s.file_path, s.source, s.enabled, s.created_at
+		FROM skills s
+		JOIN skills_fts fts ON s.id = fts.rowid
+		WHERE skills_fts MATCH ? AND s.enabled = 1
+		ORDER BY rank
 		LIMIT ?
-	`, like, like, like, limit)
+	`, query, limit)
 	if err != nil {
-		return nil, err
+		// Fallback: LIKE-based search
+		like := "%" + query + "%"
+		rows, err = s.db.Query(`
+			SELECT id, name, description, tags, file_path, source, enabled, created_at
+			FROM skills
+			WHERE enabled = 1 AND (name LIKE ? OR description LIKE ? OR tags LIKE ?)
+			ORDER BY name
+			LIMIT ?
+		`, like, like, like, limit)
+		if err != nil {
+			return nil, err
+		}
 	}
 	defer rows.Close()
 
@@ -1010,6 +1054,52 @@ func (s *Store) IndexSkillsFromDirs(dirs []string, registrySkillParser func(path
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────
+
+// EncryptLegacyKeys scans all backends and encrypts any plaintext api_key values.
+// Called once after store initialization with crypto enabled.
+func (s *Store) EncryptLegacyKeys() (int, error) {
+	if s.crypto == nil {
+		return 0, nil
+	}
+
+	rows, err := s.db.Query(`SELECT id, api_key FROM backends`)
+	if err != nil {
+		return 0, err
+	}
+	defer rows.Close()
+
+	type row struct {
+		id  int
+		key string
+	}
+	var toUpdate []row
+	for rows.Next() {
+		var r row
+		if err := rows.Scan(&r.id, &r.key); err != nil {
+			return 0, err
+		}
+		// If decrypt fails or returns different value, it's plaintext
+		dec, decErr := s.crypto.Decrypt(r.key)
+		if decErr != nil || dec == r.key {
+			// Plaintext — needs encryption
+			toUpdate = append(toUpdate, r)
+		}
+	}
+
+	count := 0
+	for _, r := range toUpdate {
+		enc, err := s.crypto.Encrypt(r.key)
+		if err != nil {
+			continue
+		}
+		if _, err := s.db.Exec(`UPDATE backends SET api_key = ? WHERE id = ?`, enc, r.id); err != nil {
+			continue
+		}
+		count++
+	}
+
+	return count, nil
+}
 
 func boolToInt(b bool) int {
 	if b {

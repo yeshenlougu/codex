@@ -13,6 +13,7 @@ import {
   switchProvider, deleteProvider, probeProvider,
 } from '../../lib/api';
 import type { ProviderSummary, ProviderPreset, ProviderListResponse } from '../../lib/types';
+import HealthStatusIndicator from '../../components/HealthStatusIndicator';
 
 const { Text, Title } = Typography;
 
@@ -151,7 +152,14 @@ export default function ProviderList({ onSelect }: { onSelect?: (id: string) => 
                   }
                   extra={
                     <Space>
-                      <Badge status={p.backend_count > 0 ? 'success' : 'default'} text={`${p.backend_count} 端点`} />
+                      <HealthStatusIndicator
+                        status={p.healthy_count === p.backend_count && p.backend_count > 0 ? 'healthy' :
+                                p.healthy_count > 0 ? 'degraded' :
+                                p.backend_count > 0 ? 'unhealthy' : 'unknown'}
+                        showLabel
+                        size="small"
+                      />
+                      <Badge status={p.backend_count > 0 ? 'success' : 'default'} text={`${p.healthy_count || 0}/${p.backend_count} 端点`} />
                     </Space>
                   }
                   actions={[

@@ -156,6 +156,7 @@ export interface ProviderSummary {
   icon_color?: string;
   category?: string;
   backend_count: number;
+  healthy_count: number;
   in_failover_queue: boolean;
   is_current: boolean;
 }

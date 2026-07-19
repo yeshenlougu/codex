@@ -15,37 +15,54 @@ import (
 //go:embed migrations/001_initial.sql
 var migration001 string
 
+//go:embed migrations/002_skills_fts.sql
+var migration002 string
+
 // InitDB opens (or creates) the SQLite database at the given path,
 // runs all pending migrations, and seeds default data.
-func InitDB(dbPath string) (*sql.DB, error) {
+// Returns the database connection and optional key encryption (if codexDir is provided).
+func InitDB(dbPath, codexDir string) (*sql.DB, *KeyEncryption, error) {
 	// Ensure parent directory exists
 	if err := os.MkdirAll(filepath.Dir(dbPath), 0700); err != nil {
-		return nil, fmt.Errorf("store: mkdir %s: %w", filepath.Dir(dbPath), err)
+		return nil, nil, fmt.Errorf("store: mkdir %s: %w", filepath.Dir(dbPath), err)
+	}
+
+	// Load or create encryption key
+	var crypto *KeyEncryption
+	if codexDir != "" {
+		var err error
+		crypto, err = LoadOrCreateKey(codexDir)
+		if err != nil {
+			return nil, nil, fmt.Errorf("store: crypto init: %w", err)
+		}
 	}
 
 	// Open with WAL mode + foreign keys
 	dsn := dbPath + "?_journal_mode=WAL&_foreign_keys=on"
 	db, err := sql.Open("sqlite", dsn)
 	if err != nil {
-		return nil, fmt.Errorf("store: open db: %w", err)
+		return nil, nil, fmt.Errorf("store: open db: %w", err)
 	}
 
 	// SQLite only supports a single writer
 	db.SetMaxOpenConns(1)
 
+	// Set restrictive permission on DB file (SPEC §6.8)
+	os.Chmod(dbPath, 0600)
+
 	// Run migrations
 	if err := runMigrations(db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("store: migrations: %w", err)
+		return nil, nil, fmt.Errorf("store: migrations: %w", err)
 	}
 
 	// Seed defaults (idempotent)
 	if err := seedDefaults(db); err != nil {
 		db.Close()
-		return nil, fmt.Errorf("store: seed: %w", err)
+		return nil, nil, fmt.Errorf("store: seed: %w", err)
 	}
 
-	return db, nil
+	return db, crypto, nil
 }
 
 // runMigrations applies SQL migrations in version order.
@@ -67,6 +84,7 @@ func runMigrations(db *sql.DB) error {
 		sql     string
 	}{
 		{1, migration001},
+		{2, migration002},
 	}
 
 	for _, m := range migrations {
