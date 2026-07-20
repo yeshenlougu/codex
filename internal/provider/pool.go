@@ -332,6 +332,7 @@ func (p *Pool) probeBackend(e *PoolEntry) bool {
 	ctx, cancel := context.WithTimeout(context.Background(), 5*time.Second)
 	defer cancel()
 
+	// Try /models first for model discovery
 	req, err := http.NewRequestWithContext(ctx, "GET", e.BaseURL+"/models", nil)
 	if err != nil {
 		return false
@@ -345,15 +346,17 @@ func (p *Pool) probeBackend(e *PoolEntry) bool {
 	}
 	defer resp.Body.Close()
 
+	// Server errors indicate unhealthy
 	if resp.StatusCode >= 500 {
 		return false
 	}
 
-	// Parse model names from response body
+	// Parse model names from 200 response
 	if resp.StatusCode == 200 {
 		p.discoverModelsFromResponse(e, resp)
 	}
 
+	// Non-5xx any status = server is alive (even 404 /models)
 	return true
 }
 

@@ -283,12 +283,15 @@ func (s *Server) probeProvider(w http.ResponseWriter, r *http.Request, id string
 			pr.Error = err.Error()
 		} else {
 			resp.Body.Close()
-			if resp.StatusCode < 400 {
+			if resp.StatusCode < 500 {
+				// Server responded — alive (even 404 means /models not supported, not dead)
 				pr.Status = "healthy"
-				// Update health in store
 				s.store.UpdateBackendHealth(be.ID, "healthy", 0)
+				if resp.StatusCode != 200 {
+					pr.Error = "/models returned " + resp.Status + " (model discovery skipped)"
+				}
 			} else {
-				pr.Status = "degraded"
+				pr.Status = "unhealthy"
 				pr.Error = "HTTP " + resp.Status
 			}
 		}
