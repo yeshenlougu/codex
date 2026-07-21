@@ -49,6 +49,7 @@ export async function streamMessage(
   if (!res.ok) { const err = await res.json().catch(() => ({ error: res.statusText })); onError(err.error || `HTTP ${res.status}`); return; }
   const reader = res.body?.getReader(); if (!reader) { onError('No response body'); return; }
   const decoder = new TextDecoder(); let buffer = '', fullText = '';
+  try {
   while (true) {
     const { done, value } = await reader.read(); if (done) break;
     buffer += decoder.decode(value, { stream: true });
@@ -56,11 +57,18 @@ export async function streamMessage(
     for (const line of lines) {
       if (!line.startsWith('data: ')) continue;
       try {
-        const msg: WSMessage = JSON.parse(line.slice(6));
+        // Handle potentially escaped JSON — backend sends: data: {"type":"chunk","content":"..."}
+        const jsonStr = line.slice(6);
+        const msg = JSON.parse(jsonStr) as WSMessage;
         if (msg.type === 'chunk' && msg.content) { fullText += msg.content; onChunk(msg.content); }
         else if (msg.type === 'error') { onError(msg.error || 'Unknown error'); return; }
-      } catch { /* skip */ }
+        else if (msg.type === 'session') continue; // initial session_id
+      } catch { /* skip malformed lines */ }
     }
+  }
+  } catch (e: any) {
+  if (e.name !== 'AbortError') onError(e.message || String(e));
+  return;
   }
   onDone(fullText);
 }

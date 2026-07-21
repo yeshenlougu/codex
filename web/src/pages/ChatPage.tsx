@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect, useCallback } from 'react';
+import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
 import { Card, Input, Button, Tag, Row, Col, Typography, Tooltip, Popover, Modal, Space, Result, Dropdown } from 'antd';
 import {
   SendOutlined, SearchOutlined, ToolOutlined, BugOutlined, AuditOutlined,
@@ -114,6 +114,7 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
 
   // Send a single message (called from queue or direct)
   const sendOne = useCallback(async (text: string) => {
+    try {
     const fileMatches = text.match(/[\w./-]+\.\w{1,6}/g) || [];
     setMessages(prev => [...prev, { role: 'user', content: text, files: fileMatches }]);
 
@@ -157,6 +158,10 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
       },
       activeAgent !== 'default' ? activeAgent : undefined,
     );
+    } catch (e: any) {
+      setSending(false); setStreaming('');
+      setMessages(prev => [...prev, { role: 'assistant', content: `❌ 出错了: ${e?.message || e}`, agent: 'system' }]);
+    }
   }, [sessionId, activeAgent, execOne]);
 
   // Called from queue — send then remove from queue

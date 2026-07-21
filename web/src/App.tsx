@@ -1,5 +1,5 @@
-import { useState, useCallback, useEffect } from 'react';
-import { ConfigProvider, theme } from 'antd';
+import { useState, useCallback, useEffect, Component } from 'react';
+import { ConfigProvider, theme, Result, Button } from 'antd';
 import { ThemeProvider, useTheme } from './lib/ThemeContext';
 import TitleBar from './components/TitleBar';
 import LeftSidebar from './components/LeftSidebar';
@@ -9,6 +9,36 @@ import RightPanel from './components/RightPanel';
 
 export type Page = 'chat' | 'settings';
 export type RightTab = 'review' | 'terminal' | 'browser' | 'files' | 'sidetasks';
+
+// ErrorBoundary prevents the entire app from going blank on render error
+class ErrorBoundary extends Component<{ children: React.ReactNode }, { hasError: boolean; error: Error | null }> {
+  constructor(props: any) {
+    super(props);
+    this.state = { hasError: false, error: null };
+  }
+  static getDerivedStateFromError(error: Error) {
+    return { hasError: true, error };
+  }
+  render() {
+    if (this.state.hasError) {
+      return (
+        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '100vh', padding: 40 }}>
+          <Result
+            status="warning"
+            title="页面出错"
+            subTitle={this.state.error?.message || '未知错误'}
+            extra={
+              <Button type="primary" onClick={() => { this.setState({ hasError: false, error: null }); window.location.reload(); }}>
+                刷新页面
+              </Button>
+            }
+          />
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 function AppContent() {
   const { theme: currentTheme } = useTheme();
@@ -107,7 +137,9 @@ function AppContent() {
 export default function App() {
   return (
     <ThemeProvider>
-      <AppContent />
+      <ErrorBoundary>
+        <AppContent />
+      </ErrorBoundary>
     </ThemeProvider>
   );
 }
