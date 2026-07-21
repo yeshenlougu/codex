@@ -381,16 +381,6 @@ export async function getMCPPresets(): Promise<{ presets: MCPPreset[] }> {
 
 // === Git Review ===
 
-export async function generateImage(prompt: string, size: string): Promise<{ b64_json: string; url?: string }> {
-  const res = await fetch('/v1/images/generations', {
-    method: 'POST', headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({ model: 'gpt-image-2', prompt, n: 1, size, response_format: 'b64_json' }),
-  });
-  if (!res.ok) throw new Error(`Image gen failed: ${res.status}`);
-  const data = await res.json();
-  return data.data?.[0] || data;
-}
-
 export async function getGitStatus(): Promise<{ branch: string; status: string; log: string }> {
   return req('/git/status');
 }
@@ -431,4 +421,16 @@ export async function probeProvider(id: string): Promise<ProbeResponse> {
 
 export async function createFromPreset(presetName: string, name: string, apiKey: string): Promise<{ status: string; provider: ProviderDetail }> {
   return req('/providers/from-preset', { method: 'POST', body: JSON.stringify({ preset_name: presetName, name, api_key: apiKey }) });
+}
+
+// === Image Generation ===
+
+export async function generateImage(prompt: string, size: string): Promise<{ b64_json: string; url?: string }> {
+  const res = await fetch('/v1/images/generations', {
+    method: 'POST', headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({ model: 'gpt-image-2', prompt, n: 1, size, response_format: 'b64_json' }),
+  });
+  if (!res.ok) throw new Error(`Image gen failed: ${res.status}`);
+  const data = await res.json();
+  return data.data?.[0] || data;
 }
