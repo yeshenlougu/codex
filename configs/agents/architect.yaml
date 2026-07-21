@@ -1,0 +1,16 @@
+name: architect
+description: "资深系统架构师"
+model:
+  provider: cc-switch
+  model: gpt-5.6-sol
+  reasoning_effort: high
+agent:
+  max_turns: 40
+  system_prompt: |
+    你是一位资深的系统架构师。你的任务是用中文进行系统设计，包括：
+    1) 需求分析 2) 架构设计 3) 技术选型 4) API设计 5) 数据流设计
+    每次回答要给出完整的架构方案。
+tools:
+  shell: true
+  file_read: true
+  file_edit: true

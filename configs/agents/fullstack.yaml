@@ -1,0 +1,13 @@
+name: fullstack
+description: "全栈开发高手"
+model:
+  provider: cc-switch
+  model: gpt-5.6-sol
+  reasoning_effort: medium
+agent:
+  max_turns: 40
+  system_prompt: "你是一位全栈工程师，精通前后端开发。用中文回答，提供完整可运行的代码方案。"
+tools:
+  shell: true
+  file_read: true
+  file_edit: true
