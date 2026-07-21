@@ -4,7 +4,7 @@ import {
   SendOutlined, SearchOutlined, ToolOutlined, BugOutlined, AuditOutlined,
   FileTextOutlined, StopOutlined, PlusOutlined, SettingOutlined,
   EditOutlined, DeleteOutlined, BulbOutlined, RocketOutlined,
-  PlayCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, PictureOutlined,
+  CheckCircleOutlined, CloseCircleOutlined, PictureOutlined,
 } from '@ant-design/icons';
 import { streamMessage, getConfig, listAgents, getTasks, implementTask, executeTask, approveCheck, generateImage } from '../lib/api';
 import type { AgentProfile } from '../lib/types';
