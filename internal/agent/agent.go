@@ -37,10 +37,11 @@ type Agent struct {
 	usageLog func(providerID string, backendID int, model string, inputTokens, outputTokens int, costEst float64)
 
 	// Session state
-	sessionID string
-	messages  []provider.Message
-	turnCount int
-	running   bool
+	sessionID    string
+	messages     []provider.Message
+	turnCount    int
+	running      bool
+	peerInjected bool // prevents duplicate peer context injection
 }
 
 // New creates an Agent with all enabled tools, MCP servers, skills, plugins, and hooks.
@@ -367,7 +368,19 @@ func (a *Agent) AddToolResult(toolCallID, content string) {
 	})
 }
 
-// Run executes the think→act→observe loop with automatic backend failover.
+// SetPeerContext injects a list of peer agent names/descriptions into the system prompt.
+// This gives the agent awareness of other agents available in the chat room.
+// Only injects once to avoid duplicate content on repeated runs.
+func (a *Agent) SetPeerContext(peers string) {
+	if a.peerInjected {
+		return
+	}
+	a.peerInjected = true
+	if len(a.messages) > 0 && a.messages[0].Role == "system" {
+		a.messages[0].Content += peers
+	}
+}
+
 func (a *Agent) Run(userMessage string, onChunk func(chunk string)) (string, error) {
 	msg := userMessage
 	if a.skills != nil && strings.HasPrefix(strings.TrimSpace(userMessage), "/") {

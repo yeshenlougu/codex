@@ -215,6 +215,7 @@ func (s *Server) Start() error {
 
 	// Agent profiles
 	mux.HandleFunc("/api/agents", cors(s.handleAgents))
+	mux.HandleFunc("/api/agents/sync-to-yaml", cors(s.handleSyncAgentsToYAML))
 	mux.HandleFunc("/api/agents/", cors(s.handleAgentByID))
 
 	// Chat (non-streaming)

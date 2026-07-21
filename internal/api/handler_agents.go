@@ -3,6 +3,7 @@ package api
 import (
 	"encoding/json"
 	"fmt"
+	"log"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -646,4 +647,68 @@ func (s *Server) handleSessionAgents(w http.ResponseWriter, r *http.Request) {
 			"status":     "removed",
 		})
 	}
+}
+
+// handleSyncAgentsToYAML exports all SQLite agent configs to ~/.codex/agents/*.yaml.
+// This bridges the gap between Web UI (SQLite) and CLI mode (YAML).
+func (s *Server) handleSyncAgentsToYAML(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+	if s.store == nil {
+		writeError(w, http.StatusServiceUnavailable, "no SQLite store")
+		return
+	}
+
+	agents, err := s.store.ListAgents()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "list agents: "+err.Error())
+		return
+	}
+
+	home, err := os.UserHomeDir()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "home dir: "+err.Error())
+		return
+	}
+	agentDir := filepath.Join(home, ".codex", "agents")
+	if err := os.MkdirAll(agentDir, 0700); err != nil {
+		writeError(w, http.StatusInternalServerError, "mkdir: "+err.Error())
+		return
+	}
+
+	synced := 0
+	for _, a := range agents {
+		if a.Name == "default" {
+			continue
+		}
+		profile := agent.BuiltinDefaultProfile().Clone(a.Name)
+		profile.Description = a.DisplayName
+		if a.Provider != "" {
+			profile.Model.Provider = a.Provider
+		}
+		if a.Model != "" {
+			profile.Model.Model = a.Model
+		}
+		if a.SystemPrompt != "" {
+			profile.Agent.SystemPrompt = a.SystemPrompt
+		}
+		if a.MaxTurns > 0 {
+			profile.Agent.MaxTurns = a.MaxTurns
+		}
+		profile.FilePath = filepath.Join(agentDir, a.Name+".yaml")
+		if err := profile.Save(); err != nil {
+			log.Printf("[api] sync agent %q → yaml failed: %v", a.Name, err)
+			continue
+		}
+		synced++
+	}
+
+	writeJSON(w, http.StatusOK, map[string]any{
+		"status":  "synced",
+		"count":   synced,
+		"dir":     agentDir,
+		"message": fmt.Sprintf("Synced %d agents to %s/*.yaml — CLI mode can now pick them up on next start.", synced, agentDir),
+	})
 }

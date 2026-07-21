@@ -266,25 +266,36 @@ func (m *Manager) SendMessage(sessionID, userMessage string, onChunk func(string
 	m.mu.RUnlock()
 
 	if len(mentions) > 0 {
-		var results []string
+		// Phase 1: Add all mentioned agents to the room first (so they see each other)
+		type pendingAgent struct {
+			name    string
+			message string
+		}
+		var pending []pendingAgent
 		for _, mention := range mentions {
 			if !roomCopy[mention.name] {
 				log.Printf("[manager] agent %s not in session %s — auto-inviting", mention.name, sessionID)
 				if _, invErr := m.AddAgent(sessionID, mention.name); invErr != nil {
-					results = append(results, fmt.Sprintf("[@%s] Error inviting: %v", mention.name, invErr))
-					continue
+					// Will report error in Phase 2
 				}
 			}
-			ag, agErr := m.GetAgent(sessionID, mention.name)
+			pending = append(pending, pendingAgent{name: mention.name, message: mention.message})
+		}
+
+		// Phase 2: Run each agent with full peer context
+		var results []string
+		for _, p := range pending {
+			ag, agErr := m.GetAgent(sessionID, p.name)
 			if agErr != nil {
-				results = append(results, fmt.Sprintf("[@%s] Error: %v", mention.name, agErr))
+				results = append(results, fmt.Sprintf("[@%s] Error: %v", p.name, agErr))
 				continue
 			}
-			r, runErr := ag.Run(mention.message, nil)
+			m.injectPeerContext(sessionID, ag, p.name)
+			r, runErr := ag.Run(p.message, nil)
 			if runErr != nil {
-				results = append(results, fmt.Sprintf("[@%s] Error: %v", mention.name, runErr))
+				results = append(results, fmt.Sprintf("[@%s] Error: %v", p.name, runErr))
 			} else {
-				results = append(results, fmt.Sprintf("[@%s]\n%s", mention.name, r))
+				results = append(results, fmt.Sprintf("[@%s]\n%s", p.name, r))
 			}
 		}
 		return strings.Join(results, "\n\n"), agentNames(mentions), nil
@@ -295,8 +306,34 @@ func (m *Manager) SendMessage(sessionID, userMessage string, onChunk func(string
 	if agErr != nil {
 		return "", "", agErr
 	}
+	m.injectPeerContext(sessionID, ag, "default")
 	resp, runErr := ag.Run(userMessage, onChunk)
 	return resp, "default", runErr
+}
+
+// injectPeerContext adds a list of other agents in the room to the agent's system prompt.
+func (m *Manager) injectPeerContext(sessionID string, ag *Agent, selfName string) {
+	peers := m.roomAgents[sessionID]
+	if len(peers) <= 1 {
+		return
+	}
+	var peerList []string
+	for name := range peers {
+		if name == selfName {
+			continue
+		}
+		role := name
+		if p := m.registry.Get(name); p != nil && p.Description != "" {
+			role = fmt.Sprintf("%s（%s）", name, p.Description)
+		}
+		peerList = append(peerList, "  • "+role)
+	}
+	if len(peerList) > 0 {
+		ag.SetPeerContext(fmt.Sprintf(
+			"\n\n🤝 当前聊天室还有其他 Agent 在线：\n%s\n\n你可以用 @agent名 调用他们协作。完成后可以说 \"@xxx 接下来你来处理\"。",
+			strings.Join(peerList, "\n"),
+		))
+	}
 }
 
 // ===================== Internal Helpers =====================
