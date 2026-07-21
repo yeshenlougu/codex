@@ -5,6 +5,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"io"
 	"log"
 	"net/http"
 	"os"
@@ -12,6 +13,8 @@ import (
 	"strings"
 	"sync"
 	"time"
+
+	"gopkg.in/yaml.v3"
 
 	"github.com/yeshenlougu/codex/internal/agent"
 	"github.com/yeshenlougu/codex/internal/config"
@@ -302,6 +305,9 @@ func (s *Server) Start() error {
 	// WebSocket
 	mux.HandleFunc("/ws", s.handleWebSocket)
 
+	// Image Generation — proxy to shenfeng
+	mux.HandleFunc("/v1/images/generations", cors(s.handleImageGeneration))
+
 	// Static files (frontend — embedded in binary)
 	mux.Handle("/", http.FileServer(WebFS()))
 
@@ -437,4 +443,92 @@ func (s *Server) handleModelAliases(w http.ResponseWriter, r *http.Request) {
 	default:
 		writeError(w, http.StatusMethodNotAllowed, "use GET/POST/DELETE")
 	}
+}
+
+// handleImageGeneration proxies image generation requests to the configured image API.
+// Reads credentials from ~/.hermes/config.yaml image_gen section.
+func (s *Server) handleImageGeneration(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		writeError(w, http.StatusMethodNotAllowed, "POST only")
+		return
+	}
+
+	// Read Hermes config for image API credentials
+	home, err := os.UserHomeDir()
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot find home dir")
+		return
+	}
+
+	cfgPath := filepath.Join(home, ".hermes", "config.yaml")
+	data, err := os.ReadFile(cfgPath)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "cannot read image config: "+err.Error())
+		return
+	}
+
+	var hermesCfg struct {
+		ImageGen struct {
+			BaseURL string `yaml:"base_url"`
+			OpenAI  struct {
+				APIKey  string `yaml:"api_key"`
+				BaseURL string `yaml:"base_url"`
+			} `yaml:"openai"`
+		} `yaml:"image_gen"`
+	}
+	if err := yaml.Unmarshal(data, &hermesCfg); err != nil {
+		writeError(w, http.StatusInternalServerError, "parse config: "+err.Error())
+		return
+	}
+
+	apiKey := hermesCfg.ImageGen.OpenAI.APIKey
+	baseURL := hermesCfg.ImageGen.BaseURL
+	if baseURL == "" {
+		baseURL = hermesCfg.ImageGen.OpenAI.BaseURL
+	}
+	if apiKey == "" || baseURL == "" {
+		writeError(w, http.StatusInternalServerError, "image API not configured (set image_gen in Hermes config)")
+		return
+	}
+
+	// Read request body
+	body, err := io.ReadAll(r.Body)
+	if err != nil {
+		writeError(w, http.StatusBadRequest, "cannot read body")
+		return
+	}
+	defer r.Body.Close()
+
+	// Forward to image API
+	ctx, cancel := context.WithTimeout(context.Background(), 2*time.Minute)
+	defer cancel()
+
+	req, err := http.NewRequestWithContext(ctx, "POST", strings.TrimRight(baseURL, "/")+"/images/generations", io.NopCloser(strings.NewReader(string(body))))
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "build request: "+err.Error())
+		return
+	}
+	req.Header.Set("Authorization", "Bearer "+apiKey)
+	req.Header.Set("Content-Type", "application/json")
+
+	resp, err := http.DefaultClient.Do(req)
+	if err != nil {
+		writeError(w, http.StatusBadGateway, "image API error: "+err.Error())
+		return
+	}
+	defer resp.Body.Close()
+
+	// Copy response back
+	respBody, err := io.ReadAll(resp.Body)
+	if err != nil {
+		writeError(w, http.StatusInternalServerError, "read response: "+err.Error())
+		return
+	}
+
+	w.Header().Set("Content-Type", resp.Header.Get("Content-Type"))
+	if resp.Header.Get("Content-Type") == "" {
+		w.Header().Set("Content-Type", "application/json")
+	}
+	w.WriteHeader(resp.StatusCode)
+	w.Write(respBody)
 }
