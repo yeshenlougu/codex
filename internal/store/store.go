@@ -244,19 +244,21 @@ func (s *Store) SwitchProvider(id string) error {
 
 // PresetRow mirrors the provider_presets table.
 type PresetRow struct {
-	ID         int    `json:"id"`
-	Name       string `json:"name"`
-	Category   string `json:"category"`
-	Icon       string `json:"icon"`
-	IconColor  string `json:"icon_color"`
-	WebsiteURL string `json:"website_url"`
-	APIKeyURL  string `json:"api_key_url"`
-	SortOrder  int    `json:"sort_order"`
+	ID           int    `json:"id"`
+	Name         string `json:"name"`
+	Category     string `json:"category"`
+	Icon         string `json:"icon"`
+	IconColor    string `json:"icon_color"`
+	WebsiteURL   string `json:"website_url"`
+	APIKeyURL    string `json:"api_key_url"`
+	BaseURL      string `json:"base_url"`
+	DefaultModel string `json:"default_model"`
+	SortOrder    int    `json:"sort_order"`
 }
 
 // ListPresets returns all provider presets sorted by sort_order.
 func (s *Store) ListPresets() ([]PresetRow, error) {
-	rows, err := s.db.Query(`SELECT id, name, category, icon, icon_color, website_url, api_key_url, sort_order FROM provider_presets ORDER BY sort_order, category`)
+	rows, err := s.db.Query(`SELECT id, name, category, icon, icon_color, website_url, api_key_url, COALESCE(base_url,''), COALESCE(default_model,''), sort_order FROM provider_presets ORDER BY sort_order, category`)
 	if err != nil {
 		return nil, err
 	}
@@ -265,7 +267,7 @@ func (s *Store) ListPresets() ([]PresetRow, error) {
 	var out []PresetRow
 	for rows.Next() {
 		var r PresetRow
-		if err := rows.Scan(&r.ID, &r.Name, &r.Category, &r.Icon, &r.IconColor, &r.WebsiteURL, &r.APIKeyURL, &r.SortOrder); err != nil {
+		if err := rows.Scan(&r.ID, &r.Name, &r.Category, &r.Icon, &r.IconColor, &r.WebsiteURL, &r.APIKeyURL, &r.BaseURL, &r.DefaultModel, &r.SortOrder); err != nil {
 			return nil, err
 		}
 		out = append(out, r)

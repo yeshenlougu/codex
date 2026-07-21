@@ -321,27 +321,31 @@ func (s *Server) listPresets(w http.ResponseWriter, r *http.Request) {
 
 	// Convert PresetRow to frontend-compatible shape
 	type presetOut struct {
-		ID         int    `json:"id"`
-		Name       string `json:"name"`
-		Category   string `json:"category"`
-		Icon       string `json:"icon"`
-		IconColor  string `json:"icon_color"`
-		WebsiteURL string `json:"website_url"`
-		APIKeyURL  string `json:"api_key_url"`
-		SortOrder  int    `json:"sort_order"`
+		ID           int    `json:"id"`
+		Name         string `json:"name"`
+		Category     string `json:"category"`
+		Icon         string `json:"icon"`
+		IconColor    string `json:"icon_color"`
+		WebsiteURL   string `json:"website_url"`
+		APIKeyURL    string `json:"api_key_url"`
+		BaseURL      string `json:"base_url"`
+		DefaultModel string `json:"default_model"`
+		SortOrder    int    `json:"sort_order"`
 	}
 
 	out := make([]presetOut, 0, len(presets))
 	for _, p := range presets {
 		out = append(out, presetOut{
-			ID:         p.ID,
-			Name:       p.Name,
-			Category:   p.Category,
-			Icon:       p.Icon,
-			IconColor:  p.IconColor,
-			WebsiteURL: p.WebsiteURL,
-			APIKeyURL:  p.APIKeyURL,
-			SortOrder:  p.SortOrder,
+			ID:           p.ID,
+			Name:         p.Name,
+			Category:     p.Category,
+			Icon:         p.Icon,
+			IconColor:    p.IconColor,
+			WebsiteURL:   p.WebsiteURL,
+			APIKeyURL:    p.APIKeyURL,
+			BaseURL:      p.BaseURL,
+			DefaultModel: p.DefaultModel,
+			SortOrder:    p.SortOrder,
 		})
 	}
 
@@ -388,12 +392,17 @@ func (s *Server) createFromPreset(w http.ResponseWriter, r *http.Request) {
 		name = preset.Name
 	}
 
+	userKey := req.APIKey
+	backendURL := preset.BaseURL
+	if backendURL == "" {
+		backendURL = preset.WebsiteURL
+	}
 	// Create provider with one default backend
 	provider, err := s.store.CreateProvider(name, preset.Icon, preset.IconColor, preset.Category, "", []store.BackendInput{
 		{
 			Label:   name,
-			APIKey:  req.APIKey,
-			BaseURL: preset.WebsiteURL,
+			APIKey:  userKey,
+			BaseURL: backendURL,
 			Weight:  10,
 		},
 	})

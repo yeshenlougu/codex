@@ -21,6 +21,9 @@ var migration002 string
 //go:embed migrations/003_model_aliases.sql
 var migration003 string
 
+//go:embed migrations/004_preset_base_url.sql
+var migration004 string
+
 // InitDB opens (or creates) the SQLite database at the given path,
 // runs all pending migrations, and seeds default data.
 // Returns the database connection and optional key encryption (if codexDir is provided).
@@ -89,6 +92,7 @@ func runMigrations(db *sql.DB) error {
 		{1, migration001},
 		{2, migration002},
 		{3, migration003},
+		{4, migration004},
 	}
 
 	for _, m := range migrations {
@@ -147,29 +151,30 @@ func seedDefaults(db *sql.DB) error {
 	var presetCount int
 	db.QueryRow(`SELECT COUNT(*) FROM provider_presets`).Scan(&presetCount)
 	if presetCount == 0 {
-		presets := []struct {
-			name, category, icon, iconColor, website, apiKeyURL string
-			sort                                                int
-		}{
-			{"OpenAI", "official", "openai", "#10a37f", "https://platform.openai.com", "https://platform.openai.com/api-keys", 1},
-			{"Anthropic", "official", "anthropic", "#d97757", "https://console.anthropic.com", "https://console.anthropic.com/settings/keys", 2},
-			{"Google AI", "official", "google", "#4285f4", "https://aistudio.google.com", "https://aistudio.google.com/apikey", 3},
-			{"DeepSeek", "official", "deepseek", "#4d6bfe", "https://platform.deepseek.com", "https://platform.deepseek.com/api_keys", 4},
-			{"Groq", "third_party", "zap", "#f55036", "https://console.groq.com", "https://console.groq.com/keys", 5},
-			{"Together AI", "third_party", "together", "#0f6fff", "https://api.together.ai", "https://api.together.ai/settings/api-keys", 6},
-			{"Fireworks AI", "third_party", "fireworks", "#ff6b35", "https://fireworks.ai", "https://fireworks.ai/account/api-keys", 7},
-			{"OpenRouter", "third_party", "openrouter", "#6366f1", "https://openrouter.ai", "https://openrouter.ai/keys", 8},
-			{"Mistral AI", "official", "mistral", "#f90", "https://console.mistral.ai", "https://console.mistral.ai/api-keys", 9},
-			{"Cohere", "official", "cohere", "#39594d", "https://dashboard.cohere.com", "https://dashboard.cohere.com/api-keys", 10},
-			{"Perplexity", "official", "perplexity", "#1db5a8", "https://www.perplexity.ai", "https://www.perplexity.ai/settings/api", 11},
-			{"xAI (Grok)", "official", "xai", "#000000", "https://x.ai", "https://console.x.ai", 12},
-			{"Meta Llama", "official", "meta", "#0668e1", "https://llama.meta.com", "https://llama.meta.com", 13},
-			{"BeeCode", "partner", "beecode", "#f5a623", "https://beecode.cc", "https://beecode.cc", 20},
-			{"cc-switch", "partner", "ccswitch", "#6366f1", "https://github.com/farion1231/cc-switch", "https://github.com/farion1231/cc-switch", 21},
+		type preset struct {
+			name, category, icon, iconColor, website, apiKeyURL, baseURL, defaultModel string
+			sort                                                                        int
 		}
-		for _, p := range presets {
-			db.Exec(`INSERT OR IGNORE INTO provider_presets (name, category, icon, icon_color, website_url, api_key_url, sort_order) VALUES (?,?,?,?,?,?,?)`,
-				p.name, p.category, p.icon, p.iconColor, p.website, p.apiKeyURL, p.sort)
+		presets := []preset{
+		{"OpenAI", "official", "openai", "#10a37f", "https://platform.openai.com", "https://platform.openai.com/api-keys", "https://api.openai.com/v1", "gpt-4o", 1},
+		{"Anthropic", "official", "anthropic", "#d97757", "https://console.anthropic.com", "https://console.anthropic.com/settings/keys", "https://api.anthropic.com/v1", "claude-sonnet-4-20250514", 2},
+		{"Google AI", "official", "google", "#4285f4", "https://aistudio.google.com", "https://aistudio.google.com/apikey", "https://generativelanguage.googleapis.com/v1beta", "gemini-2.5-pro", 3},
+		{"DeepSeek", "third_party", "deepseek", "#4d6bfe", "https://platform.deepseek.com", "https://platform.deepseek.com/api_keys", "https://api.deepseek.com/v1", "deepseek-chat", 4},
+		{"Groq", "third_party", "groq", "#f55036", "https://console.groq.com", "https://console.groq.com/keys", "https://api.groq.com/openai/v1", "llama-3.3-70b-versatile", 5},
+		{"Together AI", "third_party", "together", "#0f6bff", "https://api.together.xyz", "https://api.together.xyz/settings/api-keys", "https://api.together.xyz/v1", "meta-llama/Llama-3.3-70B-Instruct-Turbo", 6},
+		{"Fireworks AI", "third_party", "fireworks", "#ff6b35", "https://fireworks.ai", "https://fireworks.ai/account/api-keys", "https://api.fireworks.ai/inference/v1", "accounts/fireworks/models/llama-v3p1-70b-instruct", 7},
+		{"OpenRouter", "third_party", "openrouter", "#6366f1", "https://openrouter.ai", "https://openrouter.ai/keys", "https://openrouter.ai/api/v1", "openai/gpt-4o", 8},
+		{"Mistral AI", "official", "mistral", "#f90", "https://console.mistral.ai", "https://console.mistral.ai/api-keys", "https://api.mistral.ai/v1", "mistral-large-latest", 9},
+		{"Cohere", "official", "cohere", "#39594d", "https://dashboard.cohere.com", "https://dashboard.cohere.com/api-keys", "https://api.cohere.ai/v1", "command-r-plus", 10},
+		{"Perplexity", "official", "perplexity", "#1db5a8", "https://www.perplexity.ai", "https://www.perplexity.ai/settings/api", "https://api.perplexity.ai", "sonar-pro", 11},
+		{"xAI (Grok)", "official", "xai", "#000000", "https://x.ai", "https://console.x.ai", "https://api.x.ai/v1", "grok-2", 12},
+		{"Meta Llama", "official", "meta", "#0668e1", "https://llama.meta.com", "https://llama.meta.com", "https://api.llama-api.com", "llama3.1-70b", 13},
+		{"BeeCode", "partner", "beecode", "#f5a623", "https://beecode.cc", "https://beecode.cc", "https://beecode.cc/v1", "gpt-4o-mini", 20},
+		{"cc-switch", "partner", "ccswitch", "#6366f1", "https://github.com/farion1231/cc-switch", "https://github.com/farion1231/cc-switch", "http://127.0.0.1:15721/v1", "gpt-5.6-sol", 21},
+	}
+	for _, p := range presets {
+		db.Exec(`INSERT OR IGNORE INTO provider_presets (name, category, icon, icon_color, website_url, api_key_url, base_url, default_model, sort_order) VALUES (?,?,?,?,?,?,?,?,?)`,
+			p.name, p.category, p.icon, p.iconColor, p.website, p.apiKeyURL, p.baseURL, p.defaultModel, p.sort)
 		}
 	}
 
