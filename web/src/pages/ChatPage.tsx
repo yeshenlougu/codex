@@ -1,12 +1,12 @@
 import { useState, useRef, useEffect, useCallback, useMemo } from 'react';
-import { Card, Input, Button, Tag, Row, Col, Typography, Tooltip, Popover, Modal, Space, Result, Dropdown } from 'antd';
+import { Card, Input, Button, Tag, Row, Col, Typography, Tooltip, Popover, Modal, Space, Result, Dropdown, Select } from 'antd';
 import {
   SendOutlined, SearchOutlined, ToolOutlined, BugOutlined, AuditOutlined,
   FileTextOutlined, StopOutlined, PlusOutlined, SettingOutlined,
   EditOutlined, DeleteOutlined, BulbOutlined, RocketOutlined,
-  PlayCircleOutlined, CheckCircleOutlined, CloseCircleOutlined,
+  PlayCircleOutlined, CheckCircleOutlined, CloseCircleOutlined, PictureOutlined,
 } from '@ant-design/icons';
-import { streamMessage, getConfig, listAgents, getTasks, implementTask, executeTask, approveCheck } from '../lib/api';
+import { streamMessage, getConfig, listAgents, getTasks, implementTask, executeTask, approveCheck, generateImage } from '../lib/api';
 import type { AgentProfile } from '../lib/types';
 import type { Page } from '../App';
 
@@ -55,6 +55,12 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
   const [queue, setQueue] = useState<QueuedItem[]>([]);
   const [pendingApproval, setPendingApproval] = useState<ApprovalCheck | null>(null);
   const [activeExecTask, setActiveExecTask] = useState<number | null>(null);
+  // Image generation state
+  const [imgOpen, setImgOpen] = useState(false);
+  const [imgPrompt, setImgPrompt] = useState('');
+  const [imgSize, setImgSize] = useState('1024x1024');
+  const [imgLoading, setImgLoading] = useState(false);
+  const [imgResult, setImgResult] = useState('');
   const bottomRef = useRef<HTMLDivElement>(null);
 
   // WebSocket for approval notifications
@@ -217,6 +223,20 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
     if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); handleSend(); }
   };
 
+  // Image generation
+  const handleGenerateImage = async () => {
+    if (!imgPrompt.trim() || imgLoading) return;
+    setImgLoading(true); setImgResult('');
+    try {
+      const result = await generateImage(imgPrompt.trim(), imgSize);
+      setImgResult(result.b64_json || result.url || '');
+      setImgPrompt('');
+    } catch (e: any) {
+      setImgResult('error');
+    }
+    setImgLoading(false);
+  };
+
   // Queue actions
   const toggleSteer = (id: string) => setQueue(prev => prev.map(q =>
     q.id === id ? { ...q, mode: q.mode === 'steer' ? 'direct' : 'steer', expanded: q.mode !== 'steer' } : q
@@ -240,7 +260,20 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
   ];
 
   const activeAgentProfile = agents.find(a => a.name === activeAgent);
-  const agentAvatar = activeAgentProfile?.name === 'default' ? '🤖' : '🤖';
+  const agentAvatar = activeAgentProfile?.name === 'default' ? '🤖' :
+    activeAgent === 'architect' ? '🏗️' :
+    activeAgent === 'reviewer' ? '🔍' :
+    activeAgent === 'poet' ? '🎭' :
+    activeAgent === 'fullstack' ? '⚡' : '🤖';
+
+  const getAgentAvatar = (name?: string) => {
+    if (!name || name === 'default') return '🤖';
+    if (name === 'architect') return '🏗️';
+    if (name === 'reviewer') return '🔍';
+    if (name === 'poet') return '🎭';
+    if (name === 'fullstack') return '⚡';
+    return '🤖';
+  };
 
   // Build default + custom agents list
   const allAgentNames = ['default', ...agents.filter(a => a.name !== 'default').map(a => a.name)];
@@ -450,6 +483,38 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
         </div>
       )}
 
+      {/* Agent Selector Bar */}
+      <div style={{
+        display: 'flex', alignItems: 'center', gap: 6, padding: '4px 24px 0',
+        overflowX: 'auto', whiteSpace: 'nowrap',
+      }}>
+        {allAgentNames.map(name => {
+          const isActive = activeAgent === name;
+          const profile = agents.find(a => a.name === name);
+          return (
+            <Tag
+              key={name}
+              color={isActive ? '#5e6ad2' : undefined}
+              style={{
+                cursor: 'pointer', margin: 0, padding: '2px 10px',
+                fontWeight: isActive ? 600 : 400,
+                opacity: isActive ? 1 : 0.6,
+                border: isActive ? '1px solid #5e6ad2' : '1px solid var(--border)',
+                background: isActive ? 'rgba(94,106,210,0.1)' : 'var(--bg-panel)',
+              }}
+              onClick={() => setActiveAgent(name)}
+            >
+              {name === 'default' ? '🤖 Default' : name}
+              {profile?.model && ` · ${profile.model.model}`}
+            </Tag>
+          );
+        })}
+        <div style={{ flex: 1 }} />
+        <Text type="secondary" style={{ fontSize: 10, whiteSpace: 'nowrap' }}>
+          @agent 调用其他 Agent
+        </Text>
+      </div>
+
       {/* Input area */}
       <div style={{ padding: '8px 24px 10px', borderTop: '1px solid var(--border)', background: 'var(--bg-root)' }}>
         <div style={{ maxWidth: 720, margin: '0 auto' }}>
@@ -487,6 +552,11 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
                 icon={<span style={{ fontWeight: 700, fontSize: 16 }}>+</span>}
                 style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
             </Dropdown>
+            <Tooltip title="生成图片">
+              <Button type="text" size="small" icon={<PictureOutlined />}
+                onClick={() => setImgOpen(true)}
+                style={{ color: 'var(--text-muted)', flexShrink: 0 }} />
+            </Tooltip>
             <TextArea
               value={input}
               onChange={e => setInput(e.target.value)}
@@ -543,6 +613,46 @@ export default function ChatPage({ sessionId, workspace, onNavigate }: Props) {
       >
         <DraggableBall agentAvatar={agentAvatar} onBallClick={() => setBallOpen(v => !v)} />
       </Popover>
+
+      {/* Image Generation Modal */}
+      <Modal
+        title="🎨 生成图片"
+        open={imgOpen}
+        onCancel={() => { setImgOpen(false); setImgResult(''); }}
+        footer={null}
+        width={480}
+        centered
+      >
+        <div style={{ display: 'flex', flexDirection: 'column', gap: 12 }}>
+          <div style={{ display: 'flex', gap: 8 }}>
+            <Input
+              placeholder="描述你想生成的图片..."
+              value={imgPrompt}
+              onChange={e => setImgPrompt(e.target.value)}
+              onPressEnter={handleGenerateImage}
+              style={{ flex: 1 }}
+            />
+            <Select value={imgSize} onChange={setImgSize} style={{ width: 120 }}>
+              {['256x256','512x512','1024x1024'].map(s => (
+                <Select.Option key={s} value={s}>{s}</Select.Option>
+              ))}
+            </Select>
+          </div>
+          <Button type="primary" onClick={handleGenerateImage} loading={imgLoading} icon={<SendOutlined />} block>
+            生成
+          </Button>
+          {imgResult === 'error' && <Text type="danger">生成失败，请重试</Text>}
+          {imgResult && imgResult !== 'error' && (
+            <div style={{ borderRadius: 8, overflow: 'hidden', background: 'var(--bg-elevated)' }}>
+              <img
+                src={imgResult.startsWith('http') ? imgResult : `data:image/png;base64,${imgResult}`}
+                alt="Generated"
+                style={{ width: '100%', display: 'block' }}
+              />
+            </div>
+          )}
+        </div>
+      </Modal>
 
       {/* Sandbox Approval Modal */}
       <Modal
@@ -669,67 +779,58 @@ function DraggableBall({ agentAvatar, onBallClick }: { agentAvatar: string; onBa
 function Markdown({ text }: { text: string }) {
   const blocks = useMemo(() => {
     const parts: { type: 'text' | 'code' | 'image'; content: string; lang?: string; alt?: string }[] = [];
-    // Extract code blocks first
-    const codeRe = /```(\w*)\n([\s\S]*?)```/g;
-    let cleaned = text;
-    let m: RegExpExecArray | null;
-    while ((m = codeRe.exec(text)) !== null) {
-      cleaned = cleaned.replace(m[0], `\x00CODE\x00`);
-    }
-    // Extract markdown images from remaining text
-    const imgRe = /!\[([^\]]*)\]\(([^)]+)\)/g;
+
+    // Split by code blocks and images
+    const tokenRe = /(```(\w*)\n([\s\S]*?)```)|(!\[([^\]]*)\]\(([^)]+)\))/g;
     let last = 0;
-    let imgMatch: RegExpExecArray | null;
-    let codeIdx = 0;
-    while ((imgMatch = imgRe.exec(cleaned)) !== null) {
-      if (imgMatch.index > last) parts.push({ type: 'text', content: cleaned.slice(last, imgMatch.index) });
-      parts.push({ type: 'image', content: imgMatch[2], alt: imgMatch[1] });
-      last = imgMatch.index + imgMatch[0].length;
+    let m: RegExpExecArray | null;
+    while ((m = tokenRe.exec(text)) !== null) {
+      // Text before this token
+      if (m.index > last) {
+        parts.push({ type: 'text', content: text.slice(last, m.index) });
+      }
+      if (m[1]) {
+        // Code block: m[2]=lang, m[3]=code
+        parts.push({ type: 'code', content: m[3], lang: m[2] || undefined });
+      } else if (m[4]) {
+        // Image: m[5]=alt, m[6]=url
+        parts.push({ type: 'image', content: m[6], alt: m[5] });
+      }
+      last = m.index + m[0].length;
     }
-    if (last < cleaned.length) {
-      // Restore code blocks in remaining text
-      let rest = cleaned.slice(last);
-      codeRe.lastIndex = 0;
-      const codeBlocks: string[] = [];
-      while ((m = codeRe.exec(text)) !== null) codeBlocks.push(`\`\`\`${m[1]}\n${m[2]}\`\`\``);
-      for (const cb of codeBlocks) rest = rest.replace('\x00CODE\x00', cb);
-      if (rest.trim()) parts.push({ type: 'text', content: rest });
+    if (last < text.length) {
+      parts.push({ type: 'text', content: text.slice(last) });
     }
     return parts;
   }, [text]);
 
   function renderText(plain: string): React.ReactNode[] {
-    const pathRe = /([A-Z]:\\[\w\-\\]+\.\w+)/g;
-    const elements: React.ReactNode[] = [];
-    let lastIdx = 0;
-    let match: RegExpExecArray | null;
-    while ((match = pathRe.exec(plain)) !== null) {
-      if (match.index > lastIdx) elements.push(plain.slice(lastIdx, match.index));
-      elements.push(
-        <Tag key={match.index} style={{
-          background: 'var(--bg-elevated)', border: '1px solid var(--border)',
-          borderRadius: 4, fontSize: 10, fontFamily: "'JetBrains Mono', monospace",
-          padding: '1px 6px', lineHeight: 1.6,
-        }}>
-          <FileTextOutlined style={{ marginRight: 3 }} />
-          {match[1].split('\\').slice(-2).join('\\')}
-        </Tag>
-      );
-      lastIdx = match.index + match[0].length;
-    }
-    if (lastIdx < plain.length) elements.push(plain.slice(lastIdx));
-    return elements;
+    // Simple bold/italic rendering
+    const lines = plain.split('\n');
+    return [
+      lines.map((line, i) => {
+        const bold = line.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+        const formatted = bold.replace(/\*(.+?)\*/g, '<i>$1</i>');
+        return (
+          <span key={i}>
+            {i > 0 && <br />}
+            <span dangerouslySetInnerHTML={{ __html: formatted }} />
+          </span>
+        );
+      }),
+    ];
   }
 
-  return <>
+  return <div style={{ lineHeight: 1.7 }}>
     {blocks.map((b, i) => {
       if (b.type === 'code') return (
         <pre key={i} style={{
           background: 'var(--bg-panel)', border: '1px solid var(--border)', borderRadius: 8,
           padding: '10px 14px', margin: '6px 0', overflow: 'auto', fontSize: 12,
-          fontFamily: "'JetBrains Mono', monospace",
+          fontFamily: "'JetBrains Mono', 'Fira Code', monospace", lineHeight: 1.5,
+          whiteSpace: 'pre-wrap', wordBreak: 'break-word',
         }}>
-          {b.lang && <div style={{ fontSize: 10, color: 'var(--text-muted)', marginBottom: 4 }}>{b.lang}</div>}
+          {b.lang && <div style={{ fontSize: 10, color: '#5e6ad2', marginBottom: 6, fontWeight: 600, textTransform: 'uppercase', letterSpacing: '0.05em' }}>{b.lang}</div>}
           <code>{b.content}</code>
         </pre>
       );
@@ -737,7 +838,7 @@ function Markdown({ text }: { text: string }) {
         <div key={i} style={{ margin: '8px 0' }}>
           <img
             src={b.content}
-            alt={b.alt || 'Generated image'}
+            alt={b.alt || 'Image'}
             style={{ maxWidth: '100%', maxHeight: 512, borderRadius: 8, border: '1px solid var(--border)' }}
             loading="lazy"
           />
@@ -746,5 +847,5 @@ function Markdown({ text }: { text: string }) {
       );
       return <span key={i}>{renderText(b.content)}</span>;
     })}
-  </>;
+  </div>;
 }
