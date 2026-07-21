@@ -1541,3 +1541,184 @@ body {
   transform: translateY(0);
   transition: opacity 0.2s ease, transform 0.2s ease;
 }
+
+/* ==================== Premium Dark Theme Enhancements ==================== */
+
+/* Override antd dark backgrounds to deeper shades */
+[data-theme="dark"] .ant-layout,
+[data-theme="dark"] .ant-layout-sider,
+[data-theme="dark"] .ant-card,
+[data-theme="dark"] .ant-table,
+[data-theme="dark"] .ant-modal-content,
+[data-theme="dark"] .ant-tabs-nav {
+  background: #0d0d0e !important;
+}
+
+[data-theme="dark"] .ant-layout-sider {
+  background: #0a0a0b !important;
+  border-right: 1px solid rgba(255,255,255,0.04) !important;
+}
+
+/* Glass-morphism cards — translucent with blur */
+[data-theme="dark"] .ant-card {
+  background: rgba(255,255,255,0.02) !important;
+  border-color: rgba(255,255,255,0.05) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+  box-shadow: 0 1px 3px rgba(0,0,0,0.4);
+}
+
+[data-theme="dark"] .ant-card:hover {
+  background: rgba(255,255,255,0.03) !important;
+  border-color: rgba(94,106,210,0.2) !important;
+  box-shadow: 0 4px 16px rgba(0,0,0,0.5), 0 0 0 1px rgba(94,106,210,0.1);
+  transform: translateY(-2px);
+}
+
+/* Indigo glow on primary buttons */
+[data-theme="dark"] .ant-btn-primary {
+  background: linear-gradient(135deg, #5e6ad2, #4a55b8) !important;
+  border-color: transparent !important;
+  box-shadow: 0 2px 8px rgba(94,106,210,0.35), 0 0 0 1px rgba(94,106,210,0.2);
+}
+
+[data-theme="dark"] .ant-btn-primary:hover {
+  background: linear-gradient(135deg, #828fff, #5e6ad2) !important;
+  box-shadow: 0 4px 16px rgba(94,106,210,0.5), 0 0 0 2px rgba(94,106,210,0.3);
+  transform: translateY(-1px);
+}
+
+/* Active nav items with indigo glow border */
+[data-theme="dark"] .session-item.active {
+  background: rgba(94,106,210,0.08) !important;
+  border-left: 2px solid #5e6ad2 !important;
+  box-shadow: inset 4px 0 8px -4px rgba(94,106,210,0.2);
+}
+
+/* Chat input focus glow */
+[data-theme="dark"] .chat-input:focus {
+  border-color: rgba(94,106,210,0.5) !important;
+  box-shadow: 0 0 0 3px rgba(94,106,210,0.1), inset 0 1px 2px rgba(0,0,0,0.2) !important;
+}
+
+/* Indigo ring on input focus */
+[data-theme="dark"] .ant-input:focus,
+[data-theme="dark"] .ant-input-affix-wrapper-focused {
+  box-shadow: 0 0 0 3px rgba(94,106,210,0.12) !important;
+  border-color: rgba(94,106,210,0.4) !important;
+}
+
+/* Sidebar nav item hover with glass effect */
+[data-theme="dark"] .sidebar-nav-item:hover {
+  background: rgba(255,255,255,0.03) !important;
+}
+
+[data-theme="dark"] .sidebar-nav-item.active {
+  background: rgba(94,106,210,0.1) !important;
+}
+
+/* Settings sidebar — indigo active link */
+[data-theme="dark"] .settings-nav-active {
+  background: rgba(94,106,210,0.1) !important;
+  box-shadow: inset 3px 0 0 #5e6ad2;
+}
+
+/* Chat empty state cards — premium glass */
+[data-theme="dark"] .quick-action-card {
+  background: rgba(255,255,255,0.02) !important;
+  border: 1px solid rgba(255,255,255,0.05) !important;
+  backdrop-filter: blur(8px);
+  transition: all 0.2s ease;
+}
+
+[data-theme="dark"] .quick-action-card:hover {
+  background: rgba(94,106,210,0.06) !important;
+  border-color: rgba(94,106,210,0.2) !important;
+  box-shadow: 0 4px 20px rgba(0,0,0,0.4);
+}
+
+/* Table rows — subtle hover */
+[data-theme="dark"] .ant-table-tbody > tr:hover > td {
+  background: rgba(94,106,210,0.04) !important;
+}
+
+/* Tabs refinement */
+[data-theme="dark"] .ant-tabs-ink-bar {
+  background: #5e6ad2 !important;
+}
+
+/* Switch — indigo when active */
+[data-theme="dark"] .ant-switch-checked {
+  background: #5e6ad2 !important;
+}
+
+/* Select dropdown — glass panel */
+[data-theme="dark"] .ant-select-dropdown {
+  background: rgba(20,20,22,0.95) !important;
+  backdrop-filter: blur(16px);
+  border: 1px solid rgba(255,255,255,0.06) !important;
+  box-shadow: 0 8px 32px rgba(0,0,0,0.6) !important;
+}
+
+/* Modal — deeper glass */
+[data-theme="dark"] .ant-modal-content {
+  background: rgba(18,18,20,0.98) !important;
+  backdrop-filter: blur(20px);
+  border: 1px solid rgba(255,255,255,0.06) !important;
+}
+
+/* Health status dot — indigo for healthy */
+[data-theme="dark"] .health-dot-healthy {
+  box-shadow: 0 0 6px rgba(39,166,68,0.5);
+}
+
+/* Scrollbar — darker */
+[data-theme="dark"] ::-webkit-scrollbar-thumb {
+  background: rgba(255,255,255,0.06);
+}
+
+/* Tag — refined pill shape */
+[data-theme="dark"] .ant-tag {
+  background: rgba(255,255,255,0.04);
+  border-color: rgba(255,255,255,0.06);
+}
+
+/* Statistic cards — subtle gradient border */
+[data-theme="dark"] .stat-card {
+  background: rgba(255,255,255,0.015) !important;
+  border: 1px solid rgba(255,255,255,0.04) !important;
+  position: relative;
+}
+
+[data-theme="dark"] .stat-card::before {
+  content: '';
+  position: absolute;
+  top: 0; left: 0; right: 0;
+  height: 1px;
+  background: linear-gradient(90deg, transparent, rgba(94,106,210,0.3), transparent);
+}
+
+/* Chat send button glow */
+[data-theme="dark"] .chat-send-btn:not(:disabled) {
+  box-shadow: 0 2px 8px rgba(94,106,210,0.4);
+}
+
+[data-theme="dark"] .chat-send-btn:not(:disabled):hover {
+  box-shadow: 0 4px 16px rgba(94,106,210,0.6);
+}
+
+/* Subtle page texture overlay */
+[data-theme="dark"] .main-content::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: radial-gradient(ellipse at 50% 0%, rgba(94,106,210,0.03) 0%, transparent 60%);
+  pointer-events: none;
+  z-index: 0;
+}
+
+/* Titlebar — darker */
+[data-theme="dark"] .titlebar {
+  background: #0a0a0b;
+  border-bottom: 1px solid rgba(255,255,255,0.04);
+}
